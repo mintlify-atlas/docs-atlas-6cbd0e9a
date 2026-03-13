@@ -1,0 +1,267 @@
+---
+title: Architecture
+description: How Walty is organized and how data flows through the app
+icon: sitemap
+---
+
+This document explains how Walty is organized and how data moves through the app.
+
+## Stack Overview
+
+Walty is built with modern web3 technologies:
+
+<CardGroup cols={2}>
+  <Card title="Next.js" icon="react">
+    Framework with App Router
+  </Card>
+  
+  <Card title="TypeScript" icon="code">
+    Type-safe development
+  </Card>
+  
+  <Card title="React + Tailwind" icon="paintbrush">
+    UI components and styling
+  </Card>
+  
+  <Card title="PostgreSQL" icon="database">
+    Relational database
+  </Card>
+  
+  <Card title="Drizzle" icon="layer-group">
+    Type-safe ORM
+  </Card>
+  
+  <Card title="viem" icon="ethereum">
+    Blockchain tooling
+  </Card>
+</CardGroup>
+
+## Top-Level Structure
+
+The codebase is organized into clear, functional directories:
+
+| Path | Purpose |
+| --- | --- |
+| `app/` | Pages and API routes |
+| `components/` | Reusable UI and wallet components |
+| `components/pos/` | Point-of-sale UI (merchant collection modal) |
+| `components/settings/` | Settings dialog (theme + locale selectors) |
+| `components/theme/` | Theme provider and switcher UI |
+| `components/locale/` | Locale (i18n) provider and switcher UI |
+| `lib/` | Domain logic (wallet, transactions, providers, RPC) |
+| `lib/payments/` | Payment request verification (blockchain log scanning) |
+| `server/db/` | Drizzle DB client and schema |
+| `hooks/` | Client hooks for wallet and portfolio state |
+| `locales/` | i18n dictionaries |
+
+## Main Runtime Flows
+
+### 1) Wallet Creation and Storage
+
+<Steps>
+  <Step title="Generate mnemonic">
+    Wallet mnemonic is generated client-side for maximum security.
+  </Step>
+  
+  <Step title="Encrypt mnemonic">
+    Mnemonic is encrypted in the browser before storage.
+  </Step>
+  
+  <Step title="Save encrypted payload">
+    Encrypted payload is saved in browser storage.
+  </Step>
+  
+  <Step title="Client-side signing">
+    Signing uses decrypted key material client-side only.
+  </Step>
+</Steps>
+
+**Relevant modules:**
+
+- `lib/wallet.ts`
+- `lib/crypto.ts`
+- `lib/wallet-store.ts`
+
+### 2) Portfolio and Prices
+
+<Steps>
+  <Step title="Request portfolio data">
+    UI requests portfolio data from authenticated API routes.
+  </Step>
+  
+  <Step title="Aggregate balances">
+    Backend aggregates token balances and prices via provider routers.
+  </Step>
+  
+  <Step title="Normalize response">
+    Response is normalized for client consumption.
+  </Step>
+</Steps>
+
+**Relevant modules:**
+
+- `app/api/portfolio/route.ts`
+- `lib/portfolio/portfolio-engine.ts`
+- `lib/providers/pricing/*`
+
+### 3) Send and Swap Transactions
+
+<Steps>
+  <Step title="Prepare transaction">
+    User prepares transaction in UI.
+  </Step>
+  
+  <Step title="Validate and simulate">
+    App validates/simulates transaction before submission.
+  </Step>
+  
+  <Step title="Sign and broadcast">
+    Transaction is signed and broadcast to the network.
+  </Step>
+  
+  <Step title="Persist status">
+    Hash/status are persisted for activity tracking.
+  </Step>
+</Steps>
+
+**Relevant modules:**
+
+- `lib/transactions/*`
+- `components/wallet/SendForm.tsx`
+- `components/wallet/SwapForm.tsx`
+- `app/api/tx/route.ts`
+
+### 4) Authentication and User Data
+
+- Session auth is handled with JWT cookies.
+- Protected API routes use `requireAuth`.
+- User metadata (addresses, contacts, username, tx history) is stored in PostgreSQL.
+- Users have a `userType` field: `"person"` (default) or `"business"`. This controls which home-page actions are shown and which API routes are accessible.
+
+**Relevant modules:**
+
+- `lib/auth.ts`
+- `app/api/*`
+- `app/api/user/type/route.ts` — `PATCH /api/user/type`: update account type (auth required)
+- `server/db/schema.ts`
+
+### 5) POS / Payment Requests
+
+Business accounts can generate payment requests (invoices) and receive USDC or USDT on Polygon. The flow is:
+
+<Steps>
+  <Step title="Create payment request">
+    Merchant opens the **Collect modal** (`components/pos/CollectModal.tsx`) and enters an amount + selects a token.
+  </Step>
+  
+  <Step title="Record request">
+    App calls `POST /api/payment-requests` (business-only, auth required), which records the request with a 15-minute expiry and the current Polygon block number.
+  </Step>
+  
+  <Step title="Display QR code">
+    A QR code with the public link `/pay/{requestId}` is displayed. The modal polls `GET /api/payment-requests/{requestId}` every 3 seconds.
+  </Step>
+  
+  <Step title="Payer opens link">
+    Payer opens `/pay/{requestId}` (public route, no auth required). If not logged in they are redirected to `/onboarding?next=/pay/{id}`.
+  </Step>
+  
+  <Step title="Authenticate and pay">
+    After authenticating, payer is redirected to `/dashboard/pay/{requestId}`, where they confirm payment via `sendToken()` (Polygon USDC/USDT, chain and token locked by URL params).
+  </Step>
+  
+  <Step title="Verify payment">
+    The backend `GET /api/payment-requests/{id}` route calls `checkPayment()` on each poll, which scans Polygon `Transfer` logs from `startBlock` to detect the matching transfer.
+  </Step>
+  
+  <Step title="Confirm settlement">
+    When a match is found, the request is marked `"paid"` and the merchant modal shows a confirmation with the tx hash.
+  </Step>
+</Steps>
+
+**Relevant modules:**
+
+- `lib/payments/checkPayment.ts` — blockchain Transfer log scanning
+- `components/pos/CollectModal.tsx` — merchant UI (amount → token → QR + polling → confirmed)
+- `app/pay/[requestId]/page.tsx` — public landing page for QR links
+- `app/dashboard/pay/[requestId]/page.tsx` — authenticated payment confirmation
+- `app/api/payment-requests/route.ts` — create payment request (business, auth)
+- `app/api/payment-requests/[id]/route.ts` — poll status + blockchain verification (public)
+
+## Database Model (High Level)
+
+Core tables include:
+
+- `users` — includes `userType` column (`"person"` | `"business"`, default `"person"`)
+- `addresses`
+- `transactions`
+- `contacts`
+- `user_profiles`
+- `wallet_nonces`
+- `wallet_backups`
+- `payment_requests` — merchant invoices: `id` (UUID), `merchantId` (FK → users), `amountUsd`, `amountToken`, `token` (USDC/USDT), `walletAddress`, `status` (pending/paid/expired/cancelled), `txHash` (nullable), `startBlock` (Polygon block at creation), `expiresAt`, `createdAt`
+
+**Schema source:** `server/db/schema.ts`
+
+## Routing Notes
+
+### Protected Routes
+
+- `/dashboard/*` — requires authentication; unauthenticated requests are redirected to `/onboarding`.
+  - Key pages: `/dashboard/home`, `/dashboard/send`, `/dashboard/swap`, `/dashboard/activity`, `/dashboard/contacts`, `/dashboard/pay/[requestId]`
+
+### Public Routes
+
+- `/pay/*` — public routes; CSP headers are applied but no auth redirect occurs. Used as QR code landing pages.
+
+### Onboarding Flow
+
+- `/onboarding/*` — unauthenticated entry point. Full step order:
+  `welcome` → `login` / `register` → `create-wallet` → `recovery-phrase` → `confirm-recovery` → `create-pin` → `username` → `account-type` → `complete`
+
+## Settings & Preferences
+
+Theme (dark/light) and locale (es/en) are user-selectable at runtime:
+
+- `utils/theme.ts` / `utils/locale.ts` — read/write preference from cookies (server + client helpers)
+- `components/theme/` — `ThemeProvider` + combobox selector component
+- `components/locale/` — `LocaleProvider` + combobox selector component
+- `components/settings/settings-dialog.tsx` — modal that surfaces both selectors; opened from the `UserMenu` in the sidebar footer
+
+**Defaults:** theme `"dark"`, locale `"es"`.
+
+## Design Notes for Contributors
+
+<CardGroup cols={2}>
+  <Card title="Business Logic" icon="gears">
+    Keep business logic in `lib/` and keep route handlers thin.
+  </Card>
+  
+  <Card title="API Routes" icon="server">
+    Add new API behavior behind authenticated routes when user-specific.
+  </Card>
+  
+  <Card title="Provider Interfaces" icon="plug">
+    Avoid breaking existing chain/provider interfaces without migration plan.
+  </Card>
+  
+  <Card title="Documentation" icon="book">
+    Update docs when architecture or flows change.
+  </Card>
+</CardGroup>
+
+<Warning>
+`lib/wallet-core/` is a reserved stub directory tree (asset-registry, execution-engine, intent-engine, nonce-manager, routing-engine, rpc-layer, solver-network). It is empty and intended for future wallet infrastructure — do not add code there without a design proposal.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Development Guide" icon="laptop-code" href="/developer/development">
+    Set up your local development environment
+  </Card>
+  
+  <Card title="Roadmap" icon="map" href="/developer/roadmap">
+    See current priorities and future plans
+  </Card>
+</CardGroup>

@@ -1,0 +1,164 @@
+---
+title: Multi-Chain Support
+description: Learn about Walty's support for multiple EVM networks and how to configure RPC endpoints
+---
+
+Walty is a multichain EVM wallet that supports 5 major Ethereum-compatible networks. All networks share the same account derivation path, allowing you to manage assets across chains with a single seed phrase.
+
+## Supported Networks
+
+Walty currently supports the following EVM networks:
+
+<CardGroup cols={2}>
+  <Card title="Ethereum" icon="ethereum">
+    Chain ID: **1**  
+    Currency: **ETH**  
+    Explorer: [etherscan.io](https://etherscan.io)
+  </Card>
+  
+  <Card title="Arbitrum" icon="layer-group">
+    Chain ID: **42161**  
+    Currency: **ETH**  
+    Explorer: [arbiscan.io](https://arbiscan.io)
+  </Card>
+  
+  <Card title="Base" icon="cube">
+    Chain ID: **8453**  
+    Currency: **ETH**  
+    Explorer: [basescan.org](https://basescan.org)
+  </Card>
+  
+  <Card title="Optimism" icon="circle-dot">
+    Chain ID: **10**  
+    Currency: **ETH**  
+    Explorer: [optimistic.etherscan.io](https://optimistic.etherscan.io)
+  </Card>
+  
+  <Card title="Polygon" icon="diamond">
+    Chain ID: **137**  
+    Currency: **MATIC**  
+    Explorer: [polygonscan.com](https://polygonscan.com)
+  </Card>
+</CardGroup>
+
+## Network Configuration
+
+All network configurations are defined in `lib/networks/networks.ts:20`. Each network includes:
+
+<ParamField path="id" type="number" required>
+  The chain ID used to identify the network
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Human-readable network name
+</ParamField>
+
+<ParamField path="chainType" type="enum" required>
+  Chain type (currently only `EVM` is supported)
+</ParamField>
+
+<ParamField path="nativeCurrency" type="object" required>
+  Native currency configuration with `symbol` and `decimals` (18 for all networks)
+</ParamField>
+
+<ParamField path="rpc" type="string[]" required>
+  Array of RPC endpoint URLs (populated dynamically based on API keys)
+</ParamField>
+
+<ParamField path="explorer" type="string" required>
+  Block explorer URL for viewing transactions and addresses
+</ParamField>
+
+<ParamField path="zeroxBaseUrl" type="string" required>
+  0x API endpoint for token swaps on this network
+</ParamField>
+
+## RPC Configuration
+
+Walty uses a multi-provider approach for reliable blockchain connectivity:
+
+<Steps>
+  <Step title="Primary: Alchemy">
+    Alchemy provides the primary RPC endpoints for all 5 networks. Configure with `ALCHEMY_API_KEY` in your environment variables.
+    
+    **Required** - Without this key, balance queries and transactions will fail.
+  </Step>
+  
+  <Step title="Fallback: Ankr">
+    Ankr serves as a fallback if Alchemy requests fail. Configure with `ANKR_API_KEY`.
+    
+    **Optional** - If not configured, public endpoints are used as fallback.
+  </Step>
+  
+  <Step title="Last Resort: Public RPCs">
+    Free public endpoints are used as a final fallback, but these are unreliable and rate-limited.
+  </Step>
+</Steps>
+
+<Warning>
+  Public RPC endpoints are unreliable and should not be used in production. Always configure at least `ALCHEMY_API_KEY` for production deployments.
+</Warning>
+
+## Network Detection
+
+The wallet automatically detects which networks are available based on your configuration:
+
+```typescript
+import { getEVMNetworks, getNetwork } from '@/lib/networks/networks'
+
+// Get all EVM networks
+const networks = getEVMNetworks()
+
+// Get specific network by chain ID
+const ethereum = getNetwork(1)
+const polygon = getNetwork(137)
+```
+
+See `lib/networks/networks.ts:81` for implementation details.
+
+## Native Currencies
+
+Each network has a native currency used for gas fees:
+
+| Network | Symbol | Decimals |
+|---------|--------|----------|
+| Ethereum | ETH | 18 |
+| Arbitrum | ETH | 18 |
+| Base | ETH | 18 |
+| Optimism | ETH | 18 |
+| Polygon | MATIC | 18 |
+
+<Info>
+  All networks use 18 decimals for their native currency, matching the Ethereum standard.
+</Info>
+
+## Swap Integration
+
+Each network has its own 0x API endpoint for token swaps:
+
+- **Ethereum**: `https://api.0x.org`
+- **Arbitrum**: `https://arbitrum.api.0x.org`
+- **Base**: `https://base.api.0x.org`
+- **Optimism**: `https://optimism.api.0x.org`
+- **Polygon**: `https://polygon.api.0x.org`
+
+Configure your `ZEROX_API_KEY` to enable swap functionality across all networks.
+
+## Chain Type Enums
+
+While Walty currently only supports EVM chains, the architecture includes support for future chain types:
+
+```typescript
+export enum ChainType {
+  EVM = "EVM",
+  BITCOIN = "BITCOIN",
+  SOLANA = "SOLANA",
+  COSMOS = "COSMOS",
+}
+```
+
+See `lib/networks/networks.ts:1` for the full chain type definition.
+
+<Note>
+  Currently, only EVM chains are implemented. Bitcoin, Solana, and Cosmos support is planned for future releases.
+</Note>

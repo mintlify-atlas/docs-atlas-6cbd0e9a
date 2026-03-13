@@ -1,0 +1,238 @@
+---
+title: Backup & Recovery
+description: Understanding wallet backups, encryption methods, and recovery flows in Walty
+---
+
+Walty implements two distinct backup mechanisms to ensure your wallet can be recovered securely: password-based encryption for local exports and PIN-based encryption for server backups.
+
+## Backup Methods
+
+<CardGroup cols={2}>
+  <Card title="Password-Based Export" icon="download">
+    Encrypt and export your wallet locally using a strong password. Best for cold storage and offline backups.
+  </Card>
+  
+  <Card title="PIN-Based Server Backup" icon="cloud">
+    Store an encrypted backup on the server using a 6-digit PIN. Enables easy recovery across devices.
+  </Card>
+</CardGroup>
+
+## Password-Based Encryption (Version 1)
+
+Local wallet exports use AES-256-GCM encryption with PBKDF2 key derivation.
+
+### Encryption Process
+
+<Steps>
+  <Step title="Generate Salt and IV">
+    Creates a random 16-byte salt and 12-byte initialization vector using `crypto.getRandomValues()`
+  </Step>
+  
+  <Step title="Derive Encryption Key">
+    Uses PBKDF2 with 210,000 iterations and SHA-256 to derive a 256-bit AES key from your password and salt
+  </Step>
+  
+  <Step title="Encrypt Mnemonic">
+    Encrypts the seed phrase using AES-256-GCM with the derived key
+  </Step>
+  
+  <Step title="Output Encrypted Blob">
+    Returns a JSON object containing the ciphertext, IV, salt, and version identifier
+  </Step>
+</Steps>
+
+### Encrypted Data Structure
+
+```typescript
+type EncryptedSeed = {
+  ciphertext: string  // Base64-encoded encrypted mnemonic
+  iv: string          // Base64-encoded initialization vector
+  salt: string        // Base64-encoded salt for key derivation
+  version: 1          // Encryption version identifier
+}
+```
+
+See `lib/crypto.ts:1` for the type definition and `lib/crypto.ts:25` for the encryption implementation.
+
+### Security Properties
+
+<Info>
+  **210,000 PBKDF2 iterations** significantly slow down brute-force attacks. A strong password is still essential for security.
+</Info>
+
+<Warning>
+  If you lose your password, **your backup cannot be decrypted**. Store your password securely.
+</Warning>
+
+## PIN-Based Encryption (Version 2)
+
+Server backups use a PIN combined with a server-side challenge to prevent offline brute-force attacks.
+
+### How PIN Protection Works
+
+<Steps>
+  <Step title="Server Challenge">
+    When creating a backup, the server provides a secret challenge value derived from `SERVER_PEPPER`
+  </Step>
+  
+  <Step title="Key Derivation">
+    The encryption key is derived using PBKDF2 from: `PIN + serverChallenge + salt`
+  </Step>
+  
+  <Step title="Encrypt and Store">
+    The seed is encrypted with AES-256-GCM and stored on the server
+  </Step>
+  
+  <Step title="Recovery Requires Server">
+    To decrypt, you need both the PIN and access to the server (which provides the challenge)
+  </Step>
+</Steps>
+
+### Why This Is More Secure
+
+Attackers who steal the encrypted backup **cannot** brute-force the PIN offline because:
+
+1. The server challenge is derived from `SERVER_PEPPER`, which is not included in the backup
+2. Without the challenge, trying PINs is computationally infeasible (210,000 PBKDF2 iterations)
+3. The server can implement rate limiting on recovery attempts
+
+See `lib/crypto.ts:109` for the PIN key derivation implementation.
+
+### Encrypted Data Structure
+
+```typescript
+type PinEncryptedSeed = {
+  ciphertext: string  // Base64-encoded encrypted mnemonic
+  iv: string          // Base64-encoded initialization vector
+  salt: string        // Base64-encoded salt for key derivation
+  version: 2          // PIN encryption version identifier
+}
+```
+
+See `lib/crypto.ts:10` for the type definition.
+
+<Note>
+  PIN-based backups are identified by `version: 2`, while password-based exports use `version: 1`.
+</Note>
+
+## Encryption Algorithms
+
+Both encryption methods use the same core cryptographic primitives:
+
+<ParamField path="Cipher" type="AES-256-GCM">
+  Authenticated encryption providing both confidentiality and integrity
+</ParamField>
+
+<ParamField path="Key Derivation" type="PBKDF2">
+  Password-Based Key Derivation Function 2 with SHA-256
+</ParamField>
+
+<ParamField path="Iterations" type="210,000">
+  Number of PBKDF2 iterations (exceeds OWASP recommendations)
+</ParamField>
+
+<ParamField path="Key Length" type="256 bits">
+  AES key length for maximum security
+</ParamField>
+
+<ParamField path="IV Length" type="12 bytes">
+  Initialization vector length (96 bits, optimal for GCM mode)
+</ParamField>
+
+<ParamField path="Salt Length" type="16 bytes">
+  Random salt length (128 bits)
+</ParamField>
+
+## Export Flow
+
+When you export your wallet for backup:
+
+```typescript
+import { encryptSeed } from '@/lib/crypto'
+
+// User provides a strong password
+const encrypted = await encryptSeed(mnemonic, password)
+
+// Save the encrypted object to a file
+const backup = JSON.stringify(encrypted, null, 2)
+// Download as walty-backup.json
+```
+
+See `lib/crypto.ts:25` for the `encryptSeed` implementation.
+
+## Import Flow
+
+When you restore from a backup:
+
+```typescript
+import { decryptSeed } from '@/lib/crypto'
+
+// User uploads their backup file and enters password
+const encrypted = JSON.parse(backupFile)
+const mnemonic = await decryptSeed(encrypted, password)
+
+// Derive accounts from the recovered mnemonic
+```
+
+See `lib/crypto.ts:44` for the `decryptSeed` implementation.
+
+<Warning>
+  Decryption will throw `"Invalid password"` if the password is incorrect. There is no way to recover from a wrong password.
+</Warning>
+
+## Server Backup Flow
+
+PIN-based backups follow a similar pattern but require server interaction:
+
+```typescript
+import { encryptSeedWithPin, decryptSeedWithPin } from '@/lib/crypto'
+
+// Backup: server provides challenge
+const challenge = await fetchChallengeFromServer()
+const encrypted = await encryptSeedWithPin(mnemonic, pin, challenge)
+// Upload encrypted backup to server
+
+// Recovery: server provides same challenge
+const challenge = await fetchChallengeFromServer()
+const mnemonic = await decryptSeedWithPin(encrypted, pin, challenge)
+```
+
+See `lib/crypto.ts:63` for `encryptSeedWithPin` and `lib/crypto.ts:86` for `decryptSeedWithPin`.
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Both Methods" icon="shield">
+    Create both a local encrypted backup (password) and a server backup (PIN) for redundancy.
+  </Card>
+  
+  <Card title="Strong Passwords" icon="key">
+    Use a password manager to generate and store a strong, unique password for exports.
+  </Card>
+  
+  <Card title="Secure Storage" icon="vault">
+    Store encrypted backups in multiple secure locations (encrypted cloud storage, hardware drives).
+  </Card>
+  
+  <Card title="Test Recovery" icon="check">
+    Periodically verify that you can successfully decrypt your backups.
+  </Card>
+</CardGroup>
+
+## Security Considerations
+
+<Accordion title="What if SERVER_PEPPER is compromised?">
+  If an attacker gains access to `SERVER_PEPPER`, they can derive the server challenge and attempt offline brute-force attacks against PIN-based backups. However, with 210,000 PBKDF2 iterations, this is still computationally expensive. Rotate `SERVER_PEPPER` immediately if compromised and encourage users to create new PIN backups.
+</Accordion>
+
+<Accordion title="Can I change my backup password?">
+  No, the password is not stored anywhere - it's only used to derive the encryption key. To change your password, you must decrypt with the old password and re-encrypt with a new password, creating a new backup file.
+</Accordion>
+
+<Accordion title="What happens if I lose my PIN?">
+  If you lose your PIN and don't have a password-based backup, your wallet cannot be recovered. Always maintain multiple backup methods.
+</Accordion>
+
+<Accordion title="Why 210,000 iterations?">
+  This exceeds OWASP's 2023 recommendation of 210,000 iterations for PBKDF2-SHA256, providing strong protection against brute-force attacks while remaining performant on modern devices.
+</Accordion>

@@ -1,0 +1,377 @@
+---
+title: 'Get Token Images'
+api: 'GET /api/token-images'
+description: 'Retrieve token logo images from CoinGecko'
+---
+
+## Overview
+
+Retrieve logo image URLs for all tokens supported by Walty. Images are sourced from CoinGecko's market data API and are suitable for display in wallets, portfolio views, and payment interfaces.
+
+<Note>
+  This endpoint is **public** and does not require authentication.
+</Note>
+
+## Response
+
+Returns a JSON object mapping token symbols to image URLs.
+
+<ResponseField name="[symbol]" type="string">
+  Image URL for the token logo.
+  
+  URLs point to CoinGecko's CDN and are available in multiple sizes.
+  
+  Example: `"https://assets.coingecko.com/coins/images/279/large/ethereum.png"`
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```bash cURL
+curl https://walty.app/api/token-images
+```
+
+```javascript JavaScript
+const response = await fetch('https://walty.app/api/token-images');
+const images = await response.json();
+
+console.log(`ETH logo: ${images.ETH}`);
+```
+
+```python Python
+import requests
+
+response = requests.get('https://walty.app/api/token-images')
+images = response.json()
+
+print(f"ETH logo: {images['ETH']}")
+```
+
+```typescript TypeScript
+interface TokenImages {
+  [symbol: string]: string;
+}
+
+const response = await fetch('https://walty.app/api/token-images');
+const images: TokenImages = await response.json();
+
+const ethLogo = images.ETH;
+```
+
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "ETH": "https://assets.coingecko.com/coins/images/279/large/ethereum.png",
+  "MATIC": "https://assets.coingecko.com/coins/images/4713/large/matic-token-icon.png",
+  "BNB": "https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png",
+  "USDC": "https://assets.coingecko.com/coins/images/6319/large/USD_Coin_icon.png",
+  "USDT": "https://assets.coingecko.com/coins/images/325/large/Tether.png",
+  "DAI": "https://assets.coingecko.com/coins/images/9956/large/Badge_Dai.png",
+  "WETH": "https://assets.coingecko.com/coins/images/2518/large/weth.png",
+  "WBTC": "https://assets.coingecko.com/coins/images/7598/large/wrapped_bitcoin_wbtc.png",
+  "LINK": "https://assets.coingecko.com/coins/images/877/large/chainlink-new-logo.png",
+  "UNI": "https://assets.coingecko.com/coins/images/12504/large/uni.jpg"
+}
+```
+
+## Caching
+
+This endpoint implements long-term caching for image URLs:
+
+- **Cache duration**: 6 hours
+- **Cache scope**: Server-side (shared across requests)
+- **Stale data**: Returns cached data even if refresh fails
+
+<Note>
+  Token images are cached for **6 hours**. Logo URLs rarely change, so aggressive caching reduces API load on CoinGecko.
+</Note>
+
+## Image Sizes
+
+CoinGecko provides multiple image sizes via URL modification:
+
+```javascript
+const baseUrl = images.ETH;
+// https://assets.coingecko.com/coins/images/279/large/ethereum.png
+
+// Get different sizes by replacing 'large'
+const small = baseUrl.replace('/large/', '/small/');   // 32x32
+const thumb = baseUrl.replace('/large/', '/thumb/');   // 64x64
+const large = baseUrl;                                  // 256x256
+```
+
+Available sizes:
+- `thumb`: 64x64 pixels
+- `small`: 32x32 pixels  
+- `large`: 256x256 pixels
+
+## Data Source
+
+Images are fetched from CoinGecko's `/coins/markets` endpoint:
+
+- **API**: CoinGecko Markets API
+- **Endpoint**: `https://api.coingecko.com/api/v3/coins/markets`
+- **Authentication**: Optional API key via `COINGECKO_API_KEY` environment variable
+- **Rate limits**: Depends on API tier
+
+<Warning>
+  If CoinGecko is unavailable, this endpoint may return cached data or an empty object. Always check if the token symbol exists before using the image URL.
+</Warning>
+
+## Multi-Chain Support
+
+Token images are deduplicated by CoinGecko ID:
+
+- Same token on different chains shares the same logo
+- Example: USDC on Ethereum, Polygon, and BNB Chain all use the same USDC logo
+- Wrapped tokens may have different logos than their underlying assets
+
+## Error Handling
+
+```javascript
+const response = await fetch('https://walty.app/api/token-images');
+const images = await response.json();
+
+function getTokenImage(symbol, fallbackUrl = '/default-token.png') {
+  return images[symbol] || fallbackUrl;
+}
+
+// Safe usage with fallback
+const ethLogo = getTokenImage('ETH');
+const unknownLogo = getTokenImage('UNKNOWN'); // Returns fallback
+```
+
+## Use Cases
+
+### Display Token List
+
+```javascript
+import React from 'react';
+
+function TokenList({ tokens }) {
+  const [images, setImages] = React.useState({});
+  
+  React.useEffect(() => {
+    fetch('https://walty.app/api/token-images')
+      .then(r => r.json())
+      .then(setImages);
+  }, []);
+  
+  return (
+    <div>
+      {tokens.map(token => (
+        <div key={token.symbol} className="token-item">
+          <img 
+            src={images[token.symbol]} 
+            alt={token.symbol}
+            width={32}
+            height={32}
+          />
+          <span>{token.symbol}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Combine with Prices
+
+```javascript
+async function getTokenData() {
+  const [prices, images] = await Promise.all([
+    fetch('https://walty.app/api/prices').then(r => r.json()),
+    fetch('https://walty.app/api/token-images').then(r => r.json())
+  ]);
+  
+  const tokens = Object.keys(prices).map(symbol => ({
+    symbol,
+    price: prices[symbol],
+    image: images[symbol]
+  }));
+  
+  return tokens;
+}
+
+// Usage
+const tokens = await getTokenData();
+tokens.forEach(token => {
+  console.log(`${token.symbol}: $${token.price}`);
+  console.log(`Logo: ${token.image}`);
+});
+```
+
+### Responsive Image Loading
+
+```javascript
+function TokenImage({ symbol, size = 'large' }) {
+  const [images, setImages] = React.useState({});
+  
+  React.useEffect(() => {
+    fetch('https://walty.app/api/token-images')
+      .then(r => r.json())
+      .then(setImages);
+  }, []);
+  
+  const baseUrl = images[symbol];
+  if (!baseUrl) return null;
+  
+  const sizeMap = {
+    small: { url: baseUrl.replace('/large/', '/small/'), px: 32 },
+    thumb: { url: baseUrl.replace('/large/', '/thumb/'), px: 64 },
+    large: { url: baseUrl, px: 256 }
+  };
+  
+  const { url, px } = sizeMap[size];
+  
+  return (
+    <img 
+      src={url}
+      alt={symbol}
+      width={px}
+      height={px}
+      loading="lazy"
+    />
+  );
+}
+```
+
+### Preload Images
+
+```javascript
+async function preloadTokenImages(symbols) {
+  const response = await fetch('https://walty.app/api/token-images');
+  const images = await response.json();
+  
+  const imagePromises = symbols.map(symbol => {
+    const url = images[symbol];
+    if (!url) return Promise.resolve();
+    
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
+    });
+  });
+  
+  await Promise.all(imagePromises);
+}
+
+// Preload common tokens
+await preloadTokenImages(['ETH', 'USDC', 'USDT', 'MATIC']);
+```
+
+## Performance Tips
+
+### Client-Side Caching
+
+```javascript
+class TokenImageCache {
+  constructor() {
+    this.cache = null;
+    this.promise = null;
+  }
+  
+  async getImages() {
+    if (this.cache) return this.cache;
+    
+    if (!this.promise) {
+      this.promise = fetch('https://walty.app/api/token-images')
+        .then(r => r.json())
+        .then(data => {
+          this.cache = data;
+          this.promise = null;
+          return data;
+        });
+    }
+    
+    return this.promise;
+  }
+}
+
+const imageCache = new TokenImageCache();
+const images = await imageCache.getImages();
+```
+
+### Image Optimization
+
+```html
+<!-- Use srcset for responsive images -->
+<img 
+  src="https://assets.coingecko.com/coins/images/279/large/ethereum.png"
+  srcset="
+    https://assets.coingecko.com/coins/images/279/small/ethereum.png 1x,
+    https://assets.coingecko.com/coins/images/279/thumb/ethereum.png 2x
+  "
+  alt="ETH"
+  loading="lazy"
+  decoding="async"
+/>
+```
+
+## CORS and Image Loading
+
+CoinGecko image URLs support CORS and can be used directly in:
+- `<img>` tags
+- CSS `background-image`
+- Canvas drawing
+- WebGL textures
+
+```javascript
+// Safe for canvas rendering
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d');
+const img = new Image();
+img.crossOrigin = 'anonymous';
+img.src = images.ETH;
+img.onload = () => ctx.drawImage(img, 0, 0);
+```
+
+## Rate Limiting
+
+Since this endpoint caches for 6 hours:
+- No need for client-side rate limiting
+- Safe to call on every page load
+- Consider localStorage caching for even better performance
+
+```javascript
+const CACHE_KEY = 'walty_token_images';
+const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
+
+async function getCachedTokenImages() {
+  const cached = localStorage.getItem(CACHE_KEY);
+  
+  if (cached) {
+    const { data, timestamp } = JSON.parse(cached);
+    if (Date.now() - timestamp < CACHE_TTL) {
+      return data;
+    }
+  }
+  
+  const response = await fetch('https://walty.app/api/token-images');
+  const data = await response.json();
+  
+  localStorage.setItem(CACHE_KEY, JSON.stringify({
+    data,
+    timestamp: Date.now()
+  }));
+  
+  return data;
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Get Token Prices" icon="dollar-sign" href="/api/pricing/token-prices">
+    Fetch current USD prices for all tokens
+  </Card>
+  <Card title="Payment Requests" icon="money-bill" href="/api/payments/create-request">
+    Create payment requests with token selection
+  </Card>
+</CardGroup>

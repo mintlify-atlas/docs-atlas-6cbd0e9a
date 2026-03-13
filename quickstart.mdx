@@ -1,80 +1,263 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get Walty running locally in under 5 minutes"
+icon: "rocket"
 ---
 
-## Get started in three steps
+Get Walty up and running on your local machine with Docker. This guide will have you managing crypto assets across multiple EVM chains in minutes.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
+Before you begin, ensure you have these tools installed:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Docker" icon="docker">
+    Docker Desktop or Docker Engine with Docker Compose
+  </Card>
+  <Card title="Git" icon="git">
+    For cloning the repository
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Quick Setup
+
+<Steps>
+  <Step title="Clone the Repository">
+    Get the latest version of Walty from GitHub:
+    
+    ```bash
+    git clone https://github.com/ignaciogarcia-dev/walty.git
+    cd walty
+    ```
+  </Step>
+  
+  <Step title="Configure Environment">
+    Copy the example environment file and update the required variables:
+    
+    ```bash
+    cp .env.example .env
+    ```
+    
+    At minimum, you'll need to set:
+    
+    <ParamField path="DATABASE_URL" type="string" required>
+      PostgreSQL connection string. Use `postgresql://wallet:wallet@db:5432/wallet` for Docker setup.
+    </ParamField>
+    
+    <ParamField path="JWT_SECRET" type="string" required>
+      Secret for signing JWT tokens. Generate with: `openssl rand -base64 32`
+    </ParamField>
+    
+    <ParamField path="SERVER_PEPPER" type="string" required>
+      HMAC key for PIN-based wallet backups. Generate with: `openssl rand -base64 32`
+    </ParamField>
+    
+    <ParamField path="ALCHEMY_API_KEY" type="string" required>
+      API key for Alchemy RPC services. Get one at [alchemy.com](https://www.alchemy.com/)
+    </ParamField>
+    
+    <ParamField path="ZEROX_API_KEY" type="string" required>
+      API key for 0x swap aggregation. Get one at [0x.org](https://0x.org/docs/api)
+    </ParamField>
+    
+    <Info>
+    For a complete list of environment variables, see the [Environment Variables guide](/guides/environment-variables).
+    </Info>
+  </Step>
+  
+  <Step title="Start the Stack">
+    Build and launch the application with PostgreSQL:
+    
+    ```bash
+    docker compose up --build
+    ```
+    
+    This will:
+    - Build the Next.js application image
+    - Start PostgreSQL database on port 5432
+    - Start the application on port 3000
+    - Automatically run database migrations
+    
+    <Note>
+    First build may take 2-3 minutes. Subsequent starts are much faster.
+    </Note>
+  </Step>
+  
+  <Step title="Access the Application">
+    Open your browser and navigate to:
+    
+    ```
+    http://localhost:3000
+    ```
+    
+    You'll be greeted with the Walty onboarding flow where you can:
+    - Create a new wallet with a 24-word seed phrase
+    - Import an existing wallet
+    - Set up your PIN for quick access
+  </Step>
+</Steps>
+
+## What's Running?
+
+After setup, you'll have two services running:
+
+<CardGroup cols={2}>
+  <Card title="Walty Application" icon="browser">
+    Next.js app on **port 3000**
+    
+    User interface for wallet management, transactions, and swaps
+  </Card>
+  <Card title="PostgreSQL Database" icon="database">
+    PostgreSQL on **port 5432**
+    
+    Stores user accounts, contacts, transaction history, and payment requests
+  </Card>
+</CardGroup>
+
+## Verify Installation
+
+<Accordion title="Check running containers">
+  ```bash
+  docker compose ps
+  ```
+  
+  You should see both `app` and `db` services with status "Up".
+</Accordion>
+
+<Accordion title="View application logs">
+  ```bash
+  docker compose logs -f app
+  ```
+  
+  Watch for any errors during startup. You should see "Ready in X ms" when the app is running.
+</Accordion>
+
+<Accordion title="Check database connection">
+  ```bash
+  docker compose exec db psql -U wallet -d wallet -c "SELECT COUNT(*) FROM users;"
+  ```
+  
+  This verifies the database is accessible and migrations ran successfully.
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Your First Wallet" icon="wallet" href="/features/wallet-creation">
+    Learn about seed phrases, encryption, and wallet security
+  </Card>
+  <Card title="Send Your First Transaction" icon="paper-plane" href="/features/send-receive">
+    Send ETH, MATIC, or ERC-20 tokens across supported chains
+  </Card>
+  <Card title="Swap Tokens" icon="shuffle" href="/features/token-swaps">
+    Exchange tokens using 0x and 1inch aggregators
+  </Card>
+  <Card title="Self-Host in Production" icon="server" href="/self-hosting">
+    Deploy Walty on your own infrastructure
+  </Card>
+</CardGroup>
+
+## Common Commands
+
+<CodeGroup>
+
+```bash Start
+docker compose up -d
+```
+
+```bash Stop
+docker compose down
+```
+
+```bash Rebuild
+docker compose up --build
+```
+
+```bash View Logs
+docker compose logs -f app
+```
+
+```bash Database Shell
+docker compose exec db psql -U wallet -d wallet
+```
+
+</CodeGroup>
+
+## Troubleshooting
+
+<Accordion title="Port 3000 already in use">
+  Either stop the conflicting service or change the port mapping in `docker-compose.yml`:
+  
+  ```yaml
+  ports:
+    - "3001:3000"  # Use port 3001 instead
+  ```
+</Accordion>
+
+<Accordion title="Database connection refused">
+  Ensure the PostgreSQL container is running:
+  
+  ```bash
+  docker compose ps db
+  ```
+  
+  If not running, check logs:
+  
+  ```bash
+  docker compose logs db
+  ```
+</Accordion>
+
+<Accordion title="ALCHEMY_API_KEY error">
+  Walty requires an Alchemy API key to function. Without it, balance fetching and transaction broadcasting will fail.
+  
+  1. Sign up at [alchemy.com](https://www.alchemy.com/)
+  2. Create an app for Ethereum, Polygon, Arbitrum, Base, and Optimism
+  3. Copy your API key to `.env`
+  4. Restart the containers: `docker compose restart`
+</Accordion>
+
+<Accordion title="Migrations not running">
+  Migrations run automatically via the `entrypoint.sh` script. If they fail:
+  
+  ```bash
+  # View migration logs
+  docker compose logs app | grep -i migrate
+  
+  # Manually trigger migration
+  docker compose exec app pnpm db:migrate
+  ```
+</Accordion>
+
+## Development Workflow
+
+If you want to contribute or develop locally without Docker:
+
+```bash
+# Start just the database
+docker compose -f compose.dev.yml up -d
+
+# Install dependencies
+pnpm install
+
+# Run migrations
+pnpm db:migrate
+
+# Start dev server
+pnpm dev
+```
+
+<Info>
+For detailed development setup, see the [Development Guide](/developer/development).
+</Info>
+
+## Need Help?
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/ignaciogarcia-dev/walty/issues">
+    Report bugs or request features
+  </Card>
+  <Card title="Contributing Guide" icon="code-pull-request" href="/developer/contributing">
+    Learn how to contribute to Walty
+  </Card>
+</CardGroup>

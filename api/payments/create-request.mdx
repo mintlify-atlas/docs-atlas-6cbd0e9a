@@ -1,0 +1,238 @@
+---
+title: 'Create Payment Request'
+api: 'POST /api/payment-requests'
+description: 'Create a new payment request for USDC or USDT on Polygon'
+---
+
+<Note>
+  This endpoint is only available to **business accounts**. Personal accounts will receive a 403 error.
+</Note>
+
+## Overview
+
+Create a payment request to receive USDC or USDT on Polygon. Payment requests expire after 15 minutes and require 2 blockchain confirmations before being marked as paid.
+
+The endpoint supports two payment modes:
+- **Single payment**: One transaction pays the full amount
+- **Split payment**: Multiple users can contribute partial amounts
+
+## Authentication
+
+Requires a valid session token in the Authorization header.
+
+```bash
+Authorization: Bearer <your-session-token>
+```
+
+## Request Body
+
+<ParamField body="amountUsd" type="string" required>
+  The payment amount in USD. Must be a positive number.
+  
+  Example: `"100.50"`
+</ParamField>
+
+<ParamField body="token" type="string" required>
+  The token symbol for payment. Must be either `"USDC"` or `"USDT"`.
+  
+  Both tokens operate on Polygon (Chain ID: 137).
+</ParamField>
+
+<ParamField body="merchantWalletAddress" type="string" required>
+  The Polygon wallet address where funds will be received.
+  
+  **Important**: This address must already be linked to your business account. Unlinked addresses will be rejected with a 400 error.
+</ParamField>
+
+<ParamField body="isSplitPayment" type="boolean" default="false">
+  Whether to allow multiple partial payments.
+  
+  - `false`: Requires one transaction for the full amount
+  - `true`: Allows multiple users to contribute until the total is reached
+</ParamField>
+
+## Response
+
+Returns the created payment request object.
+
+<ResponseField name="id" type="string">
+  Unique identifier for the payment request.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status of the payment request.
+  
+  <Expandable title="Status values">
+    - `pending`: Awaiting payment
+    - `confirming`: Payment detected, awaiting confirmations
+    - `paid`: Payment confirmed
+    - `expired`: Request expired after 15 minutes
+    - `cancelled`: Request cancelled by merchant
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="chainId" type="number">
+  Blockchain chain ID. Always `137` (Polygon) for payment requests.
+</ResponseField>
+
+<ResponseField name="amountUsd" type="string">
+  The requested payment amount in USD.
+</ResponseField>
+
+<ResponseField name="tokenSymbol" type="string">
+  The token symbol (`USDC` or `USDT`).
+</ResponseField>
+
+<ResponseField name="merchantWalletAddress" type="string">
+  The merchant's receiving wallet address on Polygon.
+</ResponseField>
+
+<ResponseField name="expiresAt" type="string">
+  ISO 8601 timestamp when the payment request expires (15 minutes from creation).
+</ResponseField>
+
+<ResponseField name="confirmations" type="number">
+  Current number of blockchain confirmations for the payment transaction.
+</ResponseField>
+
+<ResponseField name="requiredConfirmations" type="number">
+  Number of confirmations required before marking as paid. Always `2`.
+</ResponseField>
+
+<ResponseField name="txHash" type="string | null">
+  Transaction hash of the payment. `null` if no payment detected yet.
+</ResponseField>
+
+<ResponseField name="isSplitPayment" type="boolean">
+  Whether this request accepts split payments.
+</ResponseField>
+
+<ResponseField name="totalPaidUsd" type="string">
+  Total amount paid so far (only for split payments).
+</ResponseField>
+
+<ResponseField name="remainingAmountUsd" type="string">
+  Remaining amount to be paid (only for split payments).
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://walty.app/api/payment-requests \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
+  -d '{
+    "amountUsd": "50.00",
+    "token": "USDC",
+    "merchantWalletAddress": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+    "isSplitPayment": false
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://walty.app/api/payment-requests', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_SESSION_TOKEN'
+  },
+  body: JSON.stringify({
+    amountUsd: '50.00',
+    token: 'USDC',
+    merchantWalletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+    isSplitPayment: false
+  })
+});
+
+const paymentRequest = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://walty.app/api/payment-requests',
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_SESSION_TOKEN'
+    },
+    json={
+        'amountUsd': '50.00',
+        'token': 'USDC',
+        'merchantWalletAddress': '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+        'isSplitPayment': False
+    }
+)
+
+payment_request = response.json()
+```
+
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "id": "clx8k2m9n0000qz7x5y4z1abc",
+  "status": "pending",
+  "chainId": 137,
+  "amountUsd": "50.00",
+  "tokenSymbol": "USDC",
+  "merchantWalletAddress": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+  "expiresAt": "2026-03-13T15:45:00.000Z",
+  "confirmations": 0,
+  "requiredConfirmations": 2,
+  "txHash": null,
+  "isSplitPayment": false
+}
+```
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong.
+</ResponseField>
+
+### Common Errors
+
+| Status Code | Error Message | Description |
+|-------------|---------------|-------------|
+| 400 | `token must be USDC or USDT` | Invalid token symbol provided |
+| 400 | `invalid amount` | Amount is missing, not a number, or less than or equal to 0 |
+| 400 | `invalid merchant wallet address` | Address is not a valid Ethereum address |
+| 400 | `merchant wallet address is not linked to this account` | Address not connected to your business account |
+| 401 | `unauthorized` | Missing or invalid session token |
+| 403 | `only business accounts can create payment requests` | Account type is not business |
+
+## Blockchain Verification
+
+Once created, the payment request monitors the Polygon blockchain for incoming transfers:
+
+1. **Detection**: System scans for transfers to `merchantWalletAddress` with the exact `amountToken`
+2. **Confirmation**: Waits for 2 blockchain confirmations (30-60 seconds on Polygon)
+3. **Status Updates**: Status changes from `pending` → `confirming` → `paid`
+
+<Warning>
+  Payments expire after **15 minutes**. After expiration, the status changes to `expired` and new payments will not be detected.
+</Warning>
+
+## Polling for Updates
+
+To monitor payment status in real-time, poll the [Get Payment Request](/api/payments/get-request) endpoint:
+
+- Recommended interval: **3-5 seconds**
+- Stop polling when status is `paid`, `expired`, or `cancelled`
+- Watch the `confirmations` field to track blockchain confirmations
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Get Payment Request" icon="magnifying-glass" href="/api/payments/get-request">
+    Retrieve payment request details and status
+  </Card>
+  <Card title="Payment History" icon="clock-rotate-left" href="/api/payments/history">
+    View all past payment requests
+  </Card>
+</CardGroup>

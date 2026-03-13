@@ -1,0 +1,301 @@
+---
+title: "Activity Feed"
+api: "GET /api/tx/activity"
+description: "Get categorized transaction activity feed"
+---
+
+## Overview
+
+This endpoint provides a filtered view of user transactions, categorized by activity type. Unlike the basic transaction history endpoint, this endpoint:
+
+- Filters transactions based on user's wallet addresses
+- Categorizes transactions as "payments" or "sends"
+- Includes pagination and type filtering
+- Returns structured activity items with metadata
+
+## Authentication
+
+Requires a valid JWT token in the `Authorization` header:
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="type" type="string" default="all">
+  Activity type filter:
+  - `"all"` - All transactions where user is the sender
+  - `"payments"` - Confirmed transactions sent from user's addresses
+  - `"sends"` - All transactions sent from user's addresses (any status)
+</ParamField>
+
+<ParamField query="limit" type="number" default="50">
+  Number of items to return (max: 100)
+</ParamField>
+
+<ParamField query="offset" type="number" default="0">
+  Number of items to skip for pagination
+</ParamField>
+
+## Response
+
+<ResponseField name="items" type="array">
+  Array of activity items
+  
+  <Expandable title="Activity item fields">
+    <ResponseField name="id" type="number">
+      Unique transaction ID
+    </ResponseField>
+    
+    <ResponseField name="type" type="string">
+      Activity type: `"payment"` or `"send"`
+    </ResponseField>
+    
+    <ResponseField name="hash" type="string">
+      Transaction hash on the blockchain
+    </ResponseField>
+    
+    <ResponseField name="chainId" type="number">
+      EVM chain ID (1 = Ethereum, 137 = Polygon, etc.)
+    </ResponseField>
+    
+    <ResponseField name="fromAddress" type="string">
+      Sender's wallet address
+    </ResponseField>
+    
+    <ResponseField name="toAddress" type="string">
+      Recipient's wallet address
+    </ResponseField>
+    
+    <ResponseField name="value" type="string">
+      Transaction amount in token's smallest unit
+    </ResponseField>
+    
+    <ResponseField name="tokenSymbol" type="string">
+      Token symbol (e.g., "ETH", "USDC", "MATIC")
+    </ResponseField>
+    
+    <ResponseField name="status" type="string">
+      Transaction status: `"pending"`, `"confirmed"`, or `"failed"`
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="string">
+      ISO 8601 timestamp when transaction was created
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total number of items matching the filter (before pagination)
+</ResponseField>
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+### Status Codes
+
+- `200` - Activity retrieved successfully
+- `401` - Unauthorized (invalid or missing token)
+- `500` - Server error
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET "https://api.walty.app/api/tx/activity?type=payments&limit=20&offset=0" \
+  -H "Authorization: Bearer <your-token>"
+```
+
+```javascript JavaScript
+const params = new URLSearchParams({
+  type: 'payments',
+  limit: '20',
+  offset: '0'
+});
+
+const response = await fetch(
+  `https://api.walty.app/api/tx/activity?${params}`,
+  {
+    headers: {
+      'Authorization': 'Bearer <your-token>'
+    }
+  }
+);
+
+const activity = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'https://api.walty.app/api/tx/activity',
+    headers={'Authorization': 'Bearer <your-token>'},
+    params={
+        'type': 'payments',
+        'limit': 20,
+        'offset': 0
+    }
+)
+
+activity = response.json()
+```
+
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "items": [
+    {
+      "id": 1234,
+      "type": "payment",
+      "hash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "chainId": 1,
+      "fromAddress": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+      "toAddress": "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+      "value": "1000000",
+      "tokenSymbol": "USDC",
+      "status": "confirmed",
+      "createdAt": "2024-03-15T10:30:00.000Z"
+    },
+    {
+      "id": 1233,
+      "type": "send",
+      "hash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+      "chainId": 137,
+      "fromAddress": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+      "toAddress": "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+      "value": "5000000000000000000",
+      "tokenSymbol": "MATIC",
+      "status": "pending",
+      "createdAt": "2024-03-15T10:25:00.000Z"
+    }
+  ],
+  "total": 2
+}
+```
+
+## Implementation Notes
+
+### Activity Type Classification
+
+The endpoint categorizes transactions based on these rules:
+
+| Type | Condition |
+|------|----------|
+| **payment** | `fromAddress` matches user's wallet AND status is `confirmed` |
+| **send** | `fromAddress` matches user's wallet (any status) |
+
+### Address Matching
+
+The endpoint:
+
+1. Fetches all wallet addresses associated with the authenticated user
+2. Normalizes addresses to lowercase for comparison
+3. Filters transactions where `fromAddress` matches any user address
+4. Returns empty result if user has no registered addresses
+
+### Filter Behavior
+
+**`type=all`** (default)
+- Returns all transactions sent from user's addresses
+- Includes pending, confirmed, and failed transactions
+
+**`type=payments`**
+- Only confirmed transactions from user's addresses
+- Useful for showing completed payment history
+
+**`type=sends`**
+- All transactions from user's addresses
+- Includes all statuses (pending, confirmed, failed)
+- Same as `type=all` in current implementation
+
+<Note>
+The distinction between "payments" and "sends" allows for future differentiation between outgoing transfers and completed payments in a business context.
+</Note>
+
+### Pagination Strategy
+
+The endpoint performs pagination after filtering:
+
+```javascript
+// Calculate total pages
+const totalPages = Math.ceil(activity.total / limit);
+const currentPage = Math.floor(offset / limit) + 1;
+
+// Load next page
+const nextOffset = offset + limit;
+if (nextOffset < activity.total) {
+  await fetchActivity({ type, limit, offset: nextOffset });
+}
+```
+
+### Performance Considerations
+
+- Filtering happens in-memory after database query
+- For users with large transaction histories, consider caching
+- Address lookup is performed once per request
+- Results are ordered by `createdAt` descending (newest first)
+
+## Use Cases
+
+### Activity Feed Display
+
+```javascript
+// Show recent activity with status badges
+const { items } = await fetchActivity({ type: 'all', limit: 10 });
+
+items.forEach(item => {
+  const badge = item.status === 'pending' ? '⏳' : 
+                item.status === 'confirmed' ? '✅' : '❌';
+  
+  console.log(`${badge} ${item.value} ${item.tokenSymbol} → ${item.toAddress}`);
+});
+```
+
+### Confirmed Payments Only
+
+```javascript
+// Show only completed payments for accounting
+const { items, total } = await fetchActivity({ 
+  type: 'payments',
+  limit: 100 
+});
+
+console.log(`Total confirmed payments: ${total}`);
+```
+
+### Real-time Updates
+
+```javascript
+// Poll for new activity
+let lastId = 0;
+
+setInterval(async () => {
+  const { items } = await fetchActivity({ type: 'all', limit: 5 });
+  
+  const newItems = items.filter(item => item.id > lastId);
+  if (newItems.length > 0) {
+    lastId = newItems[0].id;
+    notifyUser(`${newItems.length} new transactions`);
+  }
+}, 10000);
+```
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Transaction History" icon="clock-rotate-left" href="/api/transactions/history">
+    Get full transaction history with status updates
+  </Card>
+  <Card title="Send Transaction" icon="paper-plane" href="/api/transactions/send">
+    Record a new transaction
+  </Card>
+</CardGroup>

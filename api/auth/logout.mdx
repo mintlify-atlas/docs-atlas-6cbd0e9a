@@ -1,0 +1,170 @@
+---
+title: "Logout"
+api: "POST /api/auth/logout"
+description: "Clear the authentication session and invalidate the JWT token"
+---
+
+## Endpoint
+
+```
+POST /api/auth/logout
+```
+
+Logs out the current user by clearing the authentication cookie. This endpoint does not require authentication and always succeeds.
+
+## Request
+
+No request body is required. This endpoint accepts an empty POST request.
+
+<Note>
+  This endpoint does not require authentication. It can be called even if the user is not logged in.
+</Note>
+
+## Response
+
+<ResponseField name="ok" type="boolean">
+  Always returns `true`
+</ResponseField>
+
+### Success Response (200)
+
+```json
+{
+  "ok": true
+}
+```
+
+The response sets a `Set-Cookie` header that clears the authentication token:
+
+```
+Set-Cookie: token=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0
+```
+
+### Cookie Clearing
+
+The logout endpoint clears the authentication cookie by:
+
+- Setting the token value to an empty string
+- Setting `Max-Age=0` to immediately expire the cookie
+- Maintaining the same security attributes (HttpOnly, Secure, SameSite)
+
+## Code Examples
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.walty.app/api/auth/logout \
+  -b cookies.txt \
+  -c cookies.txt
+```
+
+```javascript JavaScript (Fetch)
+const response = await fetch('/api/auth/logout', {
+  method: 'POST',
+  credentials: 'include', // Important: includes cookies
+});
+
+const data = await response.json();
+
+if (response.ok) {
+  console.log('Logout successful');
+  // JWT cookie has been cleared
+} else {
+  console.error('Logout failed');
+}
+```
+
+```typescript TypeScript (Fetch)
+interface LogoutResponse {
+  ok: boolean;
+}
+
+const logout = async (): Promise<LogoutResponse> => {
+  const response = await fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'include',
+  });
+
+  return response.json();
+};
+
+// Usage
+await logout();
+// User is now logged out
+```
+
+```python Python (requests)
+import requests
+
+url = "https://api.walty.app/api/auth/logout"
+
+session = requests.Session()
+response = session.post(url)
+
+if response.status_code == 200:
+    print("Logout successful")
+    # Cookie has been cleared from session
+else:
+    print("Logout failed")
+```
+
+</CodeGroup>
+
+## Implementation Details
+
+The logout endpoint is intentionally simple:
+
+- **No authentication required**: The endpoint works regardless of the current authentication state
+- **Idempotent**: Calling logout multiple times has the same effect as calling it once
+- **Client-side clearing**: The cookie is cleared by the browser when it receives the `Max-Age=0` directive
+- **No server-side state**: Since JWT tokens are stateless, no database operations are required
+
+<Note>
+  - Logout always succeeds, even if the user is not logged in
+  - The JWT token itself is not invalidated server-side (it remains valid until expiration)
+  - To fully invalidate a session, implement a token blocklist or reduce token expiration time
+</Note>
+
+<Warning>
+  After logout, the JWT token is removed from the cookie, but the token itself remains valid until its expiration (7 days). If an attacker has obtained the token, they can still use it until it expires. For high-security applications, consider implementing server-side token revocation.
+</Warning>
+
+## Best Practices
+
+### Client-Side Cleanup
+
+After calling logout, your application should:
+
+1. Redirect the user to the login page or home page
+2. Clear any client-side state (localStorage, sessionStorage)
+3. Reset any in-memory user data
+
+### Example Logout Flow
+
+```typescript
+const handleLogout = async () => {
+  try {
+    // Call logout endpoint
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    });
+    
+    // Clear client-side state
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Redirect to login
+    window.location.href = '/login';
+  } catch (error) {
+    console.error('Logout failed:', error);
+  }
+};
+```
+
+## Security Considerations
+
+- **No CSRF protection needed**: Since logout doesn't require authentication and has no side effects beyond clearing a cookie, CSRF attacks are not a concern
+- **Stateless tokens**: JWT tokens remain valid until expiration even after logout
+- **Cookie security**: The same security attributes are maintained when clearing the cookie
+- **No sensitive data exposure**: The endpoint returns no user information

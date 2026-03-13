@@ -1,0 +1,219 @@
+---
+title: "Register"
+api: "POST /api/auth/register"
+description: "Create a new user account and receive an authentication token"
+---
+
+## Endpoint
+
+```
+POST /api/auth/register
+```
+
+Creates a new user account with email and password credentials. Upon successful registration, a JWT token is generated and set as an HTTP-only cookie.
+
+## Request Body
+
+<ParamField body="email" type="string" required>
+  User's email address. Must be a valid email format (contains `@`) and will be trimmed of whitespace.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User's password. Must be at least 8 characters long. Will be hashed using bcrypt with 10 salt rounds before storage.
+</ParamField>
+
+### Request Schema
+
+```json
+{
+  "email": "string",
+  "password": "string"
+}
+```
+
+## Response
+
+<ResponseField name="ok" type="boolean">
+  Returns `true` on successful registration
+</ResponseField>
+
+### Success Response (201)
+
+```json
+{
+  "ok": true
+}
+```
+
+The response also sets a `Set-Cookie` header with the authentication token:
+
+```
+Set-Cookie: token={JWT}; HttpOnly; Secure; SameSite=Strict; Path=/
+```
+
+### User Type
+
+New users are created with `userType: "person"` by default. The user record is stored in the database with the following fields:
+
+- `id` (serial): Auto-generated user ID
+- `email` (text): Unique email address
+- `passwordHash` (text): Bcrypt hashed password
+- `userType` (text): Set to `"person"` by default
+- `createdAt` (timestamp): Account creation timestamp
+
+## Error Responses
+
+<Expandable title="400 Bad Request">
+  <ResponseField name="error" type="string">
+    `invalid-email-or-password`
+  </ResponseField>
+  
+  Returned when:
+  - Email doesn't contain `@`
+  - Email is missing or empty
+  - Password is missing
+  - Password is less than 8 characters
+  
+  ```json
+  {
+    "error": "invalid-email-or-password"
+  }
+  ```
+</Expandable>
+
+<Expandable title="409 Conflict">
+  <ResponseField name="error" type="string">
+    `email-already-in-use`
+  </ResponseField>
+  
+  Returned when the email address is already registered to another user.
+  
+  ```json
+  {
+    "error": "email-already-in-use"
+  }
+  ```
+</Expandable>
+
+<Expandable title="429 Too Many Requests">
+  <ResponseField name="error" type="string">
+    `Too many requests`
+  </ResponseField>
+  
+  Returned when the rate limit is exceeded. Rate limiting is based on the client's IP address.
+  
+  ```json
+  {
+    "error": "Too many requests"
+  }
+  ```
+</Expandable>
+
+<Expandable title="500 Internal Server Error">
+  <ResponseField name="error" type="string">
+    `unexpected-error`
+  </ResponseField>
+  
+  Returned when an unexpected database or server error occurs.
+  
+  ```json
+  {
+    "error": "unexpected-error"
+  }
+  ```
+</Expandable>
+
+## Code Examples
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.walty.app/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "securepassword123"
+  }' \
+  -c cookies.txt
+```
+
+```javascript JavaScript (Fetch)
+const response = await fetch('/api/auth/register', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  credentials: 'include', // Important: includes cookies
+  body: JSON.stringify({
+    email: 'user@example.com',
+    password: 'securepassword123',
+  }),
+});
+
+const data = await response.json();
+
+if (response.ok) {
+  console.log('Registration successful');
+} else {
+  console.error('Error:', data.error);
+}
+```
+
+```typescript TypeScript (Fetch)
+interface RegisterRequest {
+  email: string;
+  password: string;
+}
+
+interface RegisterResponse {
+  ok?: boolean;
+  error?: string;
+}
+
+const register = async (email: string, password: string): Promise<RegisterResponse> => {
+  const response = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ email, password }),
+  });
+
+  return response.json();
+};
+```
+
+```python Python (requests)
+import requests
+
+url = "https://api.walty.app/api/auth/register"
+payload = {
+    "email": "user@example.com",
+    "password": "securepassword123"
+}
+
+response = requests.post(url, json=payload)
+
+if response.status_code == 200:
+    print("Registration successful")
+    # Cookie is stored in response.cookies
+else:
+    print(f"Error: {response.json()['error']}")
+```
+
+</CodeGroup>
+
+## Implementation Details
+
+<Note>
+  - Email addresses are trimmed of leading/trailing whitespace
+  - Email uniqueness is enforced at both application and database level
+  - Password hashing uses bcrypt with 10 salt rounds
+  - JWT tokens expire after 7 days
+  - The token payload includes: `userId` and `userType: "person"`
+</Note>
+
+<Warning>
+  This endpoint is rate-limited to prevent abuse. Ensure your application handles 429 errors appropriately with exponential backoff.
+</Warning>

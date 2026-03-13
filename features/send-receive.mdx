@@ -1,0 +1,310 @@
+---
+title: Send & Receive Tokens
+description: Send native tokens and ERC-20s across EVM chains with gas estimation and username resolution
+---
+
+## Overview
+
+Walty supports sending native tokens (ETH, MATIC) and ERC-20 tokens across all supported EVM chains. Transactions include automatic gas estimation, pre-flight simulation, and optional username resolution.
+
+## Supported Token Types
+
+<CardGroup cols={2}>
+  <Card title="Native Tokens" icon="ethereum">
+    ETH (Ethereum, Arbitrum, Base, Optimism) and MATIC (Polygon)
+  </Card>
+  <Card title="ERC-20 Tokens" icon="coins">
+    Any ERC-20 token deployed on supported networks
+  </Card>
+</CardGroup>
+
+## Sending Tokens
+
+<Steps>
+  <Step title="Select the token">
+    Choose the token you want to send from your portfolio. Tokens are grouped by chain.
+
+    You can search by:
+    - Token symbol (e.g., USDC)
+    - Token name (e.g., USD Coin)
+    - Contract address (0x...)
+  </Step>
+
+  <Step title="Enter recipient address">
+    Provide the destination address in one of these formats:
+
+    - **Ethereum address**: `0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb`
+    - **Username**: `@alice` (if the recipient has registered a Walty username)
+
+    <Info>
+    Username resolution happens automatically with a 600ms debounce. You'll see the resolved address below the input field.
+    </Info>
+  </Step>
+
+  <Step title="Enter amount">
+    Specify the amount to send in the token's native units.
+
+    The interface shows your available balance for quick reference.
+  </Step>
+
+  <Step title="Review gas estimate">
+    Before confirming, Walty estimates the transaction gas cost:
+
+    ```typescript lib/transactions/estimate.ts
+    export async function estimateTokenGasCost(
+      token: Token,
+      to: string,
+      amount: string,
+      from: string,
+      chainId: number
+    ): Promise<string> {
+      const adapter = getAdapter(chainId)
+      const publicClient = getPublicClient(chainId)
+
+      const gas = await adapter.estimateGas({
+        from,
+        to,
+        token,
+        amount,
+        value: token.type === "native" ? parseUnits(amount, token.decimals) : undefined,
+      })
+
+      const gasPrice = await publicClient.getGasPrice()
+      const costEth = formatEther(gas * gasPrice)
+      return costEth
+    }
+    ```
+
+    The confirmation dialog displays:
+    - Destination address (and username if applicable)
+    - Amount and token symbol
+    - Estimated gas cost in the network's native currency
+    - Chain name and ID
+  </Step>
+
+  <Step title="Confirm and sign">
+    Click "Transfer" to sign and broadcast the transaction.
+
+    The transaction is simulated before sending to catch potential failures:
+
+    ```typescript lib/transactions/send.ts
+    export async function sendToken(params: {
+      token: Token
+      to: string
+      amount: string
+      chainId: number
+      from: string
+      mnemonic: string
+    }): Promise<string> {
+      // Simulate before sending — mandatory safety check
+      const simulation = await simulateTransaction({
+        chainId: params.chainId,
+        from: params.from,
+        to: params.to,
+        token: params.token,
+        amount: params.amount,
+      })
+
+      if (!simulation.success) {
+        throw new Error(simulation.error ?? "Transaction simulation failed")
+      }
+
+      return getAdapter(params.chainId).sendTransaction({
+        mnemonic: params.mnemonic,
+        chainId: params.chainId,
+        from: params.from,
+        to: params.to,
+        token: params.token,
+        amount: params.amount,
+      })
+    }
+    ```
+  </Step>
+</Steps>
+
+## Username Resolution
+
+Walty supports username-based addressing for easier payments.
+
+### How It Works
+
+1. Enter a username in the recipient field: `@alice`
+2. Walty queries the username registry API
+3. The associated Ethereum address is displayed
+4. Transaction proceeds using the resolved address
+
+<Warning>
+**Always verify the resolved address** before confirming the transaction. Username registrations are not immutable.
+</Warning>
+
+### Username Format
+
+Usernames must:
+- Start with `@`
+- Contain only alphanumeric characters and underscores
+- Be 3-20 characters long (excluding the `@`)
+
+```tsx components/wallet/SendForm.tsx
+useEffect(() => {
+  if (!to.startsWith("@")) return
+  const username = to.slice(1).trim()
+  if (!username) return
+
+  setUsernameResolving(true)
+
+  setTimeout(async () => {
+    try {
+      const res = await fetch(`/api/username/resolve?username=${encodeURIComponent(username)}`)
+      if (res.ok) {
+        const { address } = await res.json()
+        setResolvedAddress(address)
+        setResolvedUsername(username)
+      } else {
+        setUsernameError("Username not found")
+      }
+    } catch {
+      setUsernameError("Username not found")
+    } finally {
+      setUsernameResolving(false)
+    }
+  }, 600)
+}, [to])
+```
+
+## Receiving Tokens
+
+To receive tokens, share your Ethereum address with the sender.
+
+<Steps>
+  <Step title="Copy your address">
+    Your Ethereum address is displayed in the wallet header. Click to copy.
+  </Step>
+  <Step title="Share with sender">
+    Provide your address to the person sending you tokens.
+
+    <Tip>
+    If you've registered a Walty username, you can share that instead (e.g., `@alice`).
+    </Tip>
+  </Step>
+  <Step title="Wait for confirmation">
+    Incoming transactions appear in your transaction history once confirmed on-chain.
+  </Step>
+</Steps>
+
+## Transaction Status
+
+Walty tracks transaction status in real-time:
+
+<Accordion title="Transaction States">
+  - **Pending**: Transaction signed and submitted to the network
+  - **Pending on chain**: Transaction included in a block, awaiting confirmations
+  - **Confirmed**: Transaction finalized on-chain
+  - **Failed**: Transaction reverted or rejected
+</Accordion>
+
+Click any transaction to view it on the block explorer.
+
+## Gas Estimation
+
+### How Gas is Calculated
+
+Walty estimates gas in two steps:
+
+1. **Gas Units**: Call `eth_estimateGas` with transaction parameters
+2. **Gas Price**: Query current network gas price
+3. **Total Cost**: `gas_units × gas_price`
+
+<Info>
+Gas estimates are **approximate**. Actual gas consumption may vary slightly depending on network conditions at execution time.
+</Info>
+
+### Gas Price Fluctuations
+
+Network gas prices change dynamically based on:
+- Network congestion
+- Block space demand
+- Time of day
+- Layer 2 batch submission timing (for rollups)
+
+<Tip>
+On high-traffic days, consider waiting for lower gas prices or using Layer 2 networks (Arbitrum, Base, Optimism) for significantly cheaper transactions.
+</Tip>
+
+## Multi-Chain Transactions
+
+Each transaction is scoped to a single chain. To send tokens on different networks:
+
+<Steps>
+  <Step title="Select the target chain">
+    Use the chain selector to switch to the desired network (Ethereum, Arbitrum, Base, Optimism, or Polygon).
+  </Step>
+  <Step title="Ensure recipient address is correct">
+    Your Ethereum address works on all EVM chains, but verify the recipient expects tokens on that specific network.
+  </Step>
+  <Step title="Check token availability">
+    Not all tokens exist on all chains. For example, USDC on Ethereum is a different contract than USDC on Base.
+  </Step>
+</Steps>
+
+<Warning>
+**Sending tokens to the wrong chain can result in permanent loss.** Always verify the recipient's intended network before sending.
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Transaction fails with 'Insufficient funds'">
+    This means you don't have enough of the native token (ETH or MATIC) to pay for gas.
+
+    **Solution**: Ensure you have enough native tokens to cover both the transfer amount (if sending native tokens) and the gas fee.
+  </Accordion>
+
+  <Accordion title="Gas estimation fails">
+    Gas estimation can fail if:
+    - The recipient address is invalid
+    - You don't have enough token balance
+    - The token contract has transfer restrictions
+
+    **Solution**: Verify all transaction parameters and check your token balance.
+  </Accordion>
+
+  <Accordion title="Username not resolving">
+    Username resolution requires:
+    - An internet connection
+    - A registered username on Walty's registry
+    - Correct `@` prefix
+
+    **Solution**: Try entering the full Ethereum address instead, or verify the username is registered.
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+<Warning>
+**Transactions are irreversible.** Once confirmed on-chain, they cannot be undone. Always double-check:
+- Recipient address
+- Amount
+- Token type
+- Network/chain
+</Warning>
+
+### Pre-Flight Simulation
+
+Walty simulates every transaction before broadcasting to detect:
+- Insufficient balance
+- Contract execution failures
+- Invalid recipient addresses
+- Gas limit issues
+
+This prevents most failed transactions, saving you gas fees.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Token Swaps" icon="arrow-right-arrow-left" href="/features/token-swaps">
+    Exchange tokens directly from your wallet
+  </Card>
+  <Card title="Portfolio Tracking" icon="chart-line" href="/features/portfolio-tracking">
+    Monitor your multi-chain balances and USD values
+  </Card>
+</CardGroup>

@@ -1,0 +1,168 @@
+---
+title: "Send Transaction"
+api: "POST /api/tx"
+description: "Record a new transaction to track its status"
+---
+
+## Overview
+
+This endpoint records a new transaction in the Walty system for tracking purposes. When users send tokens, call this endpoint to create a transaction record with `pending` status. The transaction status can later be updated using the PATCH endpoint.
+
+<Note>
+This endpoint only **records** transaction metadata. The actual blockchain transaction must be broadcast separately using your wallet provider.
+</Note>
+
+## Authentication
+
+Requires a valid JWT token in the `Authorization` header:
+
+```
+Authorization: Bearer <token>
+```
+
+## Request Body
+
+<ParamField body="hash" type="string" required>
+  The transaction hash from the blockchain
+</ParamField>
+
+<ParamField body="fromAddress" type="string" required>
+  The sender's wallet address
+</ParamField>
+
+<ParamField body="toAddress" type="string" required>
+  The recipient's wallet address
+</ParamField>
+
+<ParamField body="tokenSymbol" type="string" required>
+  Token symbol (e.g., "ETH", "USDC", "MATIC")
+</ParamField>
+
+<ParamField body="value" type="string" required>
+  Transaction amount in token's smallest unit (wei for ETH)
+</ParamField>
+
+<ParamField body="chainId" type="number" default="1">
+  EVM chain ID (1 = Ethereum, 137 = Polygon, etc.)
+</ParamField>
+
+<ParamField body="chainType" type="string" default="EVM">
+  Blockchain type, currently only "EVM" is supported
+</ParamField>
+
+<ParamField body="tokenAddress" type="string">
+  Token contract address (null for native tokens like ETH)
+</ParamField>
+
+## Response
+
+<ResponseField name="ok" type="boolean">
+  Returns `true` if the transaction was successfully recorded
+</ResponseField>
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+### Status Codes
+
+- `200` - Transaction recorded successfully
+- `400` - Missing required fields
+- `401` - Unauthorized (invalid or missing token)
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.walty.app/api/tx \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "chainId": 1,
+    "chainType": "EVM",
+    "fromAddress": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+    "toAddress": "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+    "tokenAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "tokenSymbol": "USDC",
+    "value": "1000000"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.walty.app/api/tx', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer <your-token>',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    hash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    chainId: 1,
+    chainType: 'EVM',
+    fromAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+    toAddress: '0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb',
+    tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    tokenSymbol: 'USDC',
+    value: '1000000'
+  })
+});
+
+const data = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.walty.app/api/tx',
+    headers={
+        'Authorization': 'Bearer <your-token>',
+        'Content-Type': 'application/json'
+    },
+    json={
+        'hash': '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+        'chainId': 1,
+        'chainType': 'EVM',
+        'fromAddress': '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+        'toAddress': '0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb',
+        'tokenAddress': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+        'tokenSymbol': 'USDC',
+        'value': '1000000'
+    }
+)
+
+data = response.json()
+```
+
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "ok": true
+}
+```
+
+## Implementation Notes
+
+- All transactions are initially created with `status: "pending"`
+- The `value` field should be a string representing the amount in the token's smallest unit
+- For native tokens (ETH, MATIC), set `tokenAddress` to `null` or omit it
+- The transaction hash must be unique across all users
+- Use the [Update Transaction Status](/api/transactions/history) endpoint to mark transactions as confirmed or failed
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Get Transaction History" icon="clock-rotate-left" href="/api/transactions/history">
+    Retrieve user's transaction history
+  </Card>
+  <Card title="Get Activity Feed" icon="list" href="/api/transactions/activity">
+    Get filtered activity feed with type categorization
+  </Card>
+</CardGroup>

@@ -1,0 +1,172 @@
+---
+title: "User Profile"
+---
+
+Manage user profile settings, including username registration and retrieval.
+
+## Get Profile
+
+<api>GET /api/profile</api>
+
+Retrieves the profile for the authenticated user.
+
+### Authentication
+
+This endpoint requires authentication via JWT cookie.
+
+### Response
+
+<ResponseField name="username" type="string | null">
+  The user's username, or `null` if not set
+</ResponseField>
+
+### Error Responses
+
+<ResponseField name="error" type="string">
+  Error message when request fails
+</ResponseField>
+
+**Status Codes:**
+- `401` - Unauthorized (invalid or missing JWT cookie)
+
+### Examples
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET "https://api.walty.io/api/profile" \
+  -H "Cookie: auth-token=YOUR_JWT_TOKEN"
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.walty.io/api/profile', {
+  credentials: 'include',
+});
+
+const profile = await response.json();
+console.log(profile.username);
+```
+
+</CodeGroup>
+
+#### Success Response
+
+```json
+{
+  "username": "alice_wallet"
+}
+```
+
+Or if no username is set:
+
+```json
+{
+  "username": null
+}
+```
+
+---
+
+## Set Username
+
+<api>POST /api/profile</api>
+
+Sets or updates the username for the authenticated user.
+
+### Authentication
+
+This endpoint requires authentication via JWT cookie.
+
+### Request Body
+
+<ParamField body="username" type="string" required>
+  The desired username. Must be:
+  - 3-20 characters long
+  - Lowercase alphanumeric with underscores only (`a-z`, `0-9`, `_`)
+  - Unique across all users
+</ParamField>
+
+### Response
+
+<ResponseField name="ok" type="boolean">
+  Returns `true` when username is successfully set
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  The cleaned/normalized username that was saved
+</ResponseField>
+
+### Error Responses
+
+<ResponseField name="error" type="string">
+  Error message when request fails
+</ResponseField>
+
+**Status Codes:**
+- `400` - Invalid username format (see validation rules above)
+- `401` - Unauthorized (invalid or missing JWT cookie)
+- `409` - Username already taken by another user
+
+### Validation Rules
+
+Usernames are automatically:
+- Trimmed of whitespace
+- Converted to lowercase
+- Validated against the pattern `/^[a-z0-9_]+$/`
+
+### Examples
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "https://api.walty.io/api/profile" \
+  -H "Cookie: auth-token=YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice_wallet"}'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.walty.io/api/profile', {
+  method: 'POST',
+  credentials: 'include',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    username: 'alice_wallet',
+  }),
+});
+
+const result = await response.json();
+```
+
+</CodeGroup>
+
+#### Success Response
+
+```json
+{
+  "ok": true,
+  "username": "alice_wallet"
+}
+```
+
+#### Error Responses
+
+**Invalid Format:**
+```json
+{
+  "error": "Invalid username"
+}
+```
+
+**Already Taken:**
+```json
+{
+  "error": "Username taken"
+}
+```
+
+<Note>
+  The username check and insert happen in separate operations. While there's a unique constraint at the database level preventing duplicates, you should handle `409` conflicts in your client.
+</Note>

@@ -1,0 +1,219 @@
+---
+title: Development Guide
+description: Recommended development workflow for Walty
+icon: laptop-code
+---
+
+This guide covers the recommended development workflow for Walty.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+<CardGroup cols={2}>
+  <Card title="Node.js 20+" icon="node-js">
+    Latest LTS version recommended
+  </Card>
+  
+  <Card title="pnpm" icon="box">
+    Fast, disk space efficient package manager
+  </Card>
+  
+  <Card title="Docker & Docker Compose" icon="docker">
+    For running the full stack or database
+  </Card>
+  
+  <Card title="Git" icon="git-alt">
+    Version control system
+  </Card>
+</CardGroup>
+
+## Recommended Workflow
+
+Walty is easiest to develop with the full Docker stack:
+
+<Steps>
+  <Step title="Copy environment file">
+    ```bash
+    cp .env.example .env
+    ```
+  </Step>
+  
+  <Step title="Start Docker stack">
+    ```bash
+    docker compose up --build
+    ```
+  </Step>
+</Steps>
+
+<Info>
+This keeps runtime behavior aligned with production and avoids local inconsistencies.
+</Info>
+
+## Alternative Workflow (Infrastructure Only)
+
+If you want to run only PostgreSQL in Docker:
+
+<Steps>
+  <Step title="Start dev database">
+    ```bash
+    docker compose -f compose.dev.yml up -d
+    ```
+  </Step>
+  
+  <Step title="Install dependencies">
+    ```bash
+    pnpm install
+    ```
+  </Step>
+  
+  <Step title="Run migrations">
+    ```bash
+    pnpm db:migrate
+    ```
+  </Step>
+  
+  <Step title="Start dev server">
+    ```bash
+    pnpm dev
+    ```
+  </Step>
+</Steps>
+
+<Note>
+The full Docker workflow remains the default recommendation.
+</Note>
+
+## Common Scripts
+
+Here are the most commonly used commands in development:
+
+| Command | Description |
+| --- | --- |
+| `pnpm dev` | Start Next.js dev server |
+| `pnpm build` | Build production app |
+| `pnpm start` | Start production server |
+| `pnpm lint` | Run ESLint |
+| `pnpm db:migrate` | Apply DB changes (Drizzle) |
+| `pnpm db:studio` | Open Drizzle Studio |
+| `pnpm docker` | Start full stack with Docker Compose |
+| `pnpm docker:dev` | Start dev DB stack (`compose.dev.yml`) |
+| `pnpm docker:dev:down` | Stop dev DB stack |
+| `pnpm dev:clean` | Clean local/dev artifacts |
+
+### Development Server
+
+<CodeGroup>
+
+```bash Start Dev Server
+pnpm dev
+```
+
+```bash Build Production
+pnpm build
+```
+
+```bash Start Production
+pnpm start
+```
+
+</CodeGroup>
+
+### Code Quality
+
+<CodeGroup>
+
+```bash Run Linter
+pnpm lint
+```
+
+</CodeGroup>
+
+### Database Management
+
+<CodeGroup>
+
+```bash Apply Migrations
+pnpm db:migrate
+```
+
+```bash Open Studio
+pnpm db:studio
+```
+
+</CodeGroup>
+
+### Docker Commands
+
+<CodeGroup>
+
+```bash Full Stack
+pnpm docker
+```
+
+```bash Dev Database Only
+pnpm docker:dev
+```
+
+```bash Stop Dev Database
+pnpm docker:dev:down
+```
+
+```bash Clean Dev Artifacts
+pnpm dev:clean
+```
+
+</CodeGroup>
+
+## Suggested Contribution Loop
+
+Follow this workflow for making contributions:
+
+<Steps>
+  <Step title="Pick or open an issue">
+    Select an existing issue or create a new one following the [contribution guidelines](/developer/contributing).
+  </Step>
+  
+  <Step title="Create a branch">
+    Create a branch from `main` with a descriptive name:
+    ```bash
+    git checkout -b fix/123-short-description
+    ```
+  </Step>
+  
+  <Step title="Implement the smallest useful slice">
+    Focus on one specific change at a time. Keep your PR focused and reviewable.
+  </Step>
+  
+  <Step title="Run checks">
+    Before committing, ensure your code passes all checks:
+    ```bash
+    pnpm lint
+    pnpm build
+    ```
+  </Step>
+  
+  <Step title="Open PR linked to the issue">
+    Create a pull request that references the issue (e.g., `Closes #123`).
+  </Step>
+  
+  <Step title="Iterate with review feedback">
+    Address any feedback from maintainers and update your PR accordingly.
+  </Step>
+</Steps>
+
+<Info>
+For detailed contribution policy, read the [Contributing Guide](/developer/contributing).
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/developer/architecture">
+    Learn about Walty's architecture and design
+  </Card>
+  
+  <Card title="Roadmap" icon="map" href="/developer/roadmap">
+    See current priorities and future plans
+  </Card>
+</CardGroup>

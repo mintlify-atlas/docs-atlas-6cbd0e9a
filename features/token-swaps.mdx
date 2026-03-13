@@ -1,0 +1,357 @@
+---
+title: Token Swaps
+description: Exchange tokens across EVM chains using 0x and 1inch DEX aggregation
+---
+
+## Overview
+
+Walty provides built-in token swapping powered by 0x and 1inch DEX aggregators. Swaps happen directly from your wallet with automatic quote comparison, ERC-20 approval handling, and transaction simulation.
+
+<Info>
+Swaps are executed **on-chain** using decentralized exchange protocols. Walty never takes custody of your funds.
+</Info>
+
+## How Swaps Work
+
+<Steps>
+  <Step title="Select tokens to swap">
+    Choose the token you want to sell and the token you want to buy.
+
+    Both tokens must exist on the same blockchain. Cross-chain swaps are not supported.
+  </Step>
+
+  <Step title="Enter amount">
+    You can specify either:
+    - **Sell amount**: How much you want to sell (quote direction: `sell`)
+    - **Buy amount**: How much you want to receive (quote direction: `buy`)
+
+    Walty automatically calculates the other side based on current market rates.
+  </Step>
+
+  <Step title="Get live quote">
+    Walty fetches real-time quotes from DEX aggregators:
+
+    ```typescript components/wallet/SwapForm.tsx
+    const params = new URLSearchParams({
+      sellToken: sellToken.address ?? sellToken.symbol,
+      buyToken: buyToken.address ?? buyToken.symbol,
+      sellAmount: sellAmountWei,
+      chainId: String(chainId),
+    })
+
+    const res = await fetch(`/api/swap/price?${params}`)
+    const data: { buyAmount: string; sellAmount: string } = await res.json()
+    ```
+
+    Quotes update automatically as you type (debounced by 500ms).
+  </Step>
+
+  <Step title="Review swap details">
+    The swap interface displays:
+    - Exchange rate (e.g., `1 USDC = 0.000234 ETH`)
+    - Swap fee percentage and amount
+    - Network gas fee in USD
+    - Total amount you'll receive
+  </Step>
+
+  <Step title="Approve token (if needed)">
+    For ERC-20 swaps, you must first approve the DEX router to spend your tokens:
+
+    ```typescript components/wallet/SwapForm.tsx
+    const spender = quote.issues?.allowance?.spender
+    if (sellToken.type === "erc20" && sellToken.address && spender && spender !== ZERO_ADDRESS) {
+      setStatus("approving")
+      const approveTx = await walletClient.writeContract({
+        address: sellToken.address as `0x${string}`,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [spender, parseUnits(sellAmount, sellToken.decimals)],
+      })
+      await publicClient.waitForTransactionReceipt({ hash: approveTx })
+    }
+    ```
+
+    <Note>
+    Native token swaps (ETH, MATIC) don't require approval.
+    </Note>
+  </Step>
+
+  <Step title="Execute swap">
+    After approval (if needed), Walty:
+    1. Simulates the swap transaction to catch failures
+    2. Signs and broadcasts the transaction
+    3. Waits for on-chain confirmation
+
+    ```typescript components/wallet/SwapForm.tsx
+    // Simulate to catch reverts before broadcasting
+    await publicClient.call({
+      account: address as `0x${string}`,
+      to: tx.to,
+      data: tx.data,
+      value: BigInt(tx.value ?? "0"),
+    })
+
+    setStatus("swapping")
+    const hash = await walletClient.sendTransaction({
+      to: tx.to,
+      data: tx.data,
+      value: BigInt(tx.value ?? "0"),
+      gas: BigInt(tx.gas),
+    })
+
+    await publicClient.waitForTransactionReceipt({ hash })
+    setStatus("success")
+    ```
+  </Step>
+</Steps>
+
+## DEX Aggregation
+
+Walty uses multiple DEX aggregators to find the best swap rates:
+
+<CardGroup cols={2}>
+  <Card title="0x Protocol" icon="repeat">
+    Professional market maker network with deep liquidity across major pairs.
+  </Card>
+  <Card title="1inch" icon="route">
+    Advanced routing across multiple DEXs to optimize swap rates and minimize slippage.
+  </Card>
+</CardGroup>
+
+### Quote Comparison
+
+The swap API automatically:
+1. Requests quotes from all available aggregators
+2. Compares output amounts
+3. Returns the best quote to maximize your received tokens
+
+<Info>
+Aggregators compete to provide the best rates, which typically include splits across multiple liquidity sources (Uniswap, SushiSwap, Curve, etc.).
+</Info>
+
+## Swap Fees
+
+Swap fees come from two sources:
+
+### 1. Protocol Fees
+
+DEX aggregators charge a small fee (typically 0.1-0.5%) for their routing service. This fee is included in the quoted output amount.
+
+```typescript components/wallet/SwapForm.tsx
+// Calculate fee info from price data
+if (data.sellAmount && data.buyAmount) {
+  const sell = parseFloat(formatUnits(BigInt(data.sellAmount), sellToken.decimals))
+  const buy = parseFloat(formatUnits(BigInt(data.buyAmount), buyToken.decimals))
+  const midPrice = buy / sell
+  const expectedBuy = sell * midPrice
+  const feeAmount = expectedBuy - buy
+  const feePercent = expectedBuy > 0 ? (feeAmount / expectedBuy) * 100 : 0
+  setFeeInfo({ feeAmount, feePercent })
+}
+```
+
+### 2. Network Gas Fees
+
+Every swap requires gas to execute on-chain. Gas costs vary by:
+- Network congestion
+- Swap complexity (single DEX vs. multi-hop routing)
+- Token type (native vs. ERC-20)
+
+Walty estimates gas costs in USD before you confirm:
+
+```typescript components/wallet/SwapForm.tsx
+const gasCostEth = Number(tx.gas) * Number(tx.gasPrice) / 1e18
+
+// Convert to USD
+const pricesRes = await fetch("/api/prices")
+if (pricesRes.ok) {
+  const prices: Record<string, number> = await pricesRes.json()
+  const nativeSymbol = network.nativeCurrency.symbol
+  if (prices[nativeSymbol]) {
+    setNetworkFeeUsd(gasCostEth * prices[nativeSymbol])
+  }
+}
+```
+
+<Tip>
+Layer 2 networks (Arbitrum, Base, Optimism) have **significantly lower gas fees** than Ethereum mainnet. Consider swapping on L2s for better economics on smaller amounts.
+</Tip>
+
+## Supported Networks
+
+Swaps are available on:
+
+- **Ethereum** (Mainnet) - 0x
+- **Arbitrum** - 0x
+- **Base** - 0x
+- **Optimism** - 0x
+- **Polygon** - 0x
+
+Each network has its own liquidity pools and available trading pairs.
+
+## Price Impact & Slippage
+
+### Price Impact
+
+Large swaps can move the market price, especially in low-liquidity pools. The DEX aggregator accounts for this in the quote.
+
+<Warning>
+**High price impact** (>3%) means you're getting a worse rate than the mid-market price. Consider:
+- Splitting into smaller swaps
+- Waiting for better liquidity
+- Using a different token pair
+</Warning>
+
+### Slippage Protection
+
+Slippage occurs when the price changes between quote and execution. Walty includes reasonable slippage tolerance in swap transactions.
+
+If the price moves beyond tolerance, the transaction will revert on-chain (you only pay gas fees).
+
+## Transaction Simulation
+
+Before broadcasting any swap, Walty simulates the transaction using `eth_call`:
+
+```typescript
+await publicClient.call({
+  account: address as `0x${string}`,
+  to: tx.to,
+  data: tx.data,
+  value: BigInt(tx.value ?? "0"),
+})
+```
+
+This catches failures like:
+- Insufficient balance
+- Excessive slippage
+- Contract errors
+- Insufficient gas
+
+<Info>
+Simulation prevents **most failed swaps**, saving you gas fees. However, conditions can change between simulation and execution.
+</Info>
+
+## ERC-20 Approvals
+
+### Why Approvals Are Needed
+
+ERC-20 tokens require explicit approval for smart contracts to spend them on your behalf. This is a security feature.
+
+### Approval Flow
+
+<Steps>
+  <Step title="Check current allowance">
+    Walty checks if the swap router already has sufficient approval.
+  </Step>
+  <Step title="Request approval if needed">
+    If allowance is insufficient, a separate approval transaction is sent first.
+  </Step>
+  <Step title="Wait for approval confirmation">
+    The approval must be confirmed on-chain before the swap can proceed.
+  </Step>
+  <Step title="Execute swap">
+    Once approved, the swap transaction is broadcast.
+  </Step>
+</Steps>
+
+<Warning>
+**Approvals are per-token, per-spender.** You only need to approve once per token on each network, unless you revoke the approval.
+</Warning>
+
+### Approval Amount
+
+Walty approves the **exact swap amount**, not unlimited approval. This minimizes risk if the swap contract is compromised.
+
+## Swap Examples
+
+### Example 1: ETH → USDC on Ethereum
+
+1. Select ETH (sell) and USDC (buy)
+2. Enter 0.1 ETH
+3. Quote shows: `~234.56 USDC` (based on current market rate)
+4. Fee: 0.35% (~0.82 USDC)
+5. Gas: ~$2.50
+6. Confirm swap (no approval needed for native ETH)
+7. Transaction confirms in ~15 seconds
+8. USDC appears in your wallet
+
+### Example 2: USDC → DAI on Arbitrum
+
+1. Select USDC (sell) and DAI (buy)
+2. Enter 100 USDC
+3. Quote shows: `~99.95 DAI`
+4. Fee: 0.05% (~0.05 DAI)
+5. Gas: ~$0.10 (L2 gas is cheap!)
+6. Approve USDC (one-time, ~$0.10 gas)
+7. Confirm swap
+8. Transaction confirms in ~2 seconds
+9. DAI appears in your wallet
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Swap fails with 'Insufficient funds'">
+    You need enough balance to cover:
+    - The sell amount
+    - Gas fees for approval (if ERC-20)
+    - Gas fees for the swap
+
+    **Solution**: Ensure you have enough native tokens (ETH, MATIC) for gas.
+  </Accordion>
+
+  <Accordion title="Quote not loading">
+    Quotes may fail if:
+    - No liquidity exists for the pair
+    - Network is experiencing issues
+    - Amount is too small or too large
+
+    **Solution**: Try a different token pair or amount.
+  </Accordion>
+
+  <Accordion title="Approval succeeds but swap fails">
+    This can happen if:
+    - Price moved significantly (slippage exceeded)
+    - Token balance changed between approval and swap
+    - Network conditions changed
+
+    **Solution**: Get a fresh quote and try again.
+  </Accordion>
+
+  <Accordion title="High price impact warning">
+    Large swaps in small pools can result in poor rates.
+
+    **Solution**:
+    - Split into multiple smaller swaps
+    - Use a more liquid trading pair
+    - Try a different network with better liquidity
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+<Warning>
+**Review all swap details carefully before confirming.** Swaps are irreversible once executed on-chain.
+</Warning>
+
+### What to Verify
+
+- ✅ Sell token and amount
+- ✅ Buy token and estimated receive amount
+- ✅ Exchange rate is reasonable
+- ✅ Gas fee is acceptable
+- ✅ Network/chain is correct
+
+### Smart Contract Risk
+
+Walty uses audited DEX aggregator protocols (0x, 1inch), but smart contract risk always exists. Only swap amounts you're comfortable with.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Portfolio Tracking" icon="chart-line" href="/features/portfolio-tracking">
+    Monitor your token holdings and USD values across chains
+  </Card>
+  <Card title="Security" icon="shield" href="/features/security">
+    Learn about wallet encryption and protection
+  </Card>
+</CardGroup>

@@ -1,0 +1,195 @@
+---
+title: "Get Swap Price"
+api: "GET /api/swap/price"
+description: "Get indicative swap pricing without transaction data"
+---
+
+## Overview
+
+This endpoint provides quick pricing information for token swaps without generating executable transaction data. Use this for displaying estimated rates in your UI before users commit to a swap.
+
+<Note>
+This endpoint returns **indicative pricing only**. For executable quotes with transaction data, use the [Swap Quote](/api/transactions/swap-quote) endpoint.
+</Note>
+
+## Authentication
+
+Requires a valid JWT token in the `Authorization` header:
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="sellToken" type="string" required>
+  Token address to sell. Use `"ETH"` or `"MATIC"` for native tokens, or the ERC-20 contract address.
+</ParamField>
+
+<ParamField query="buyToken" type="string" required>
+  Token address to buy. Use `"ETH"` or `"MATIC"` for native tokens, or the ERC-20 contract address.
+</ParamField>
+
+<ParamField query="sellAmount" type="string" required>
+  Amount to sell in the token's smallest unit (e.g., wei for ETH)
+</ParamField>
+
+<ParamField query="chainId" type="number" default="1">
+  EVM chain ID (1 = Ethereum Mainnet, 137 = Polygon, etc.)
+</ParamField>
+
+## Response
+
+<ResponseField name="buyAmount" type="string">
+  Estimated amount of tokens you will receive (in smallest unit)
+</ResponseField>
+
+<ResponseField name="sellAmount" type="string">
+  Amount of tokens you are selling (in smallest unit)
+</ResponseField>
+
+<ResponseField name="liquidityAvailable" type="boolean">
+  Whether sufficient liquidity exists for this swap
+</ResponseField>
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+### Status Codes
+
+- `200` - Price retrieved successfully
+- `400` - Missing required parameters
+- `401` - Unauthorized (invalid or missing token)
+- `500` - Price lookup failed (no liquidity, network error, etc.)
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET "https://api.walty.app/api/swap/price?sellToken=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&buyToken=ETH&sellAmount=1000000000&chainId=1" \
+  -H "Authorization: Bearer <your-token>"
+```
+
+```javascript JavaScript
+const params = new URLSearchParams({
+  sellToken: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC
+  buyToken: 'ETH',
+  sellAmount: '1000000000', // 1000 USDC (6 decimals)
+  chainId: '1'
+});
+
+const response = await fetch(
+  `https://api.walty.app/api/swap/price?${params}`,
+  {
+    headers: {
+      'Authorization': 'Bearer <your-token>'
+    }
+  }
+);
+
+const price = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'https://api.walty.app/api/swap/price',
+    headers={'Authorization': 'Bearer <your-token>'},
+    params={
+        'sellToken': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+        'buyToken': 'ETH',
+        'sellAmount': '1000000000',
+        'chainId': '1'
+    }
+)
+
+price = response.json()
+```
+
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "buyAmount": "285714285714285714",
+  "sellAmount": "1000000000",
+  "liquidityAvailable": true
+}
+```
+
+## Implementation Notes
+
+### Price Provider
+
+This endpoint exclusively uses **0x Protocol** for pricing data. The implementation:
+
+- Calls 0x allowance-holder price endpoint
+- Uses `chainId` to route to the correct network
+- Converts native token symbols (`ETH`, `MATIC`) to 0x's sentinel address
+
+### Use Cases
+
+**Use this endpoint when:**
+- Displaying real-time exchange rates in UI
+- Calculating estimated output amounts
+- Checking liquidity availability
+- Building price charts or comparison tools
+
+**Use the quote endpoint when:**
+- User is ready to execute a swap
+- You need transaction data for signing
+- Checking allowances and balances
+
+### Performance Considerations
+
+- Price queries are faster than quote queries (no transaction building)
+- Results do not include gas estimates
+- No `takerAddress` validation is performed
+- Recommended refresh rate: 10-30 seconds for live pricing
+
+### Rate Calculation
+
+To calculate the exchange rate:
+
+```javascript
+// Example: 1000 USDC → 0.2857 ETH
+const rate = parseFloat(buyAmount) / parseFloat(sellAmount);
+const adjustedRate = rate * (10 ** (sellTokenDecimals - buyTokenDecimals));
+
+console.log(`1 USDC = ${adjustedRate} ETH`);
+```
+
+<Warning>
+Prices are indicative and may differ from actual execution rates due to:
+- Slippage during transaction execution
+- Time delay between price check and swap
+- Network congestion affecting gas prices
+- Large trades impacting liquidity pools
+</Warning>
+
+## Native Token Handling
+
+Walty automatically converts native token identifiers:
+
+| Input | 0x Format |
+|-------|----------|
+| `"ETH"` | `0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee` |
+| `"MATIC"` | `0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee` |
+| ERC-20 address | Passed through unchanged |
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Get Swap Quote" icon="file-contract" href="/api/transactions/swap-quote">
+    Get executable quote with transaction data
+  </Card>
+  <Card title="Send Transaction" icon="paper-plane" href="/api/transactions/send">
+    Record a transaction after execution
+  </Card>
+</CardGroup>

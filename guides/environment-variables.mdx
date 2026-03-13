@@ -1,0 +1,228 @@
+---
+title: Environment Variables
+description: Complete reference for all environment variables used in Walty
+---
+
+Walty uses environment variables to configure database connections, API keys, security secrets, and optional integrations. Copy `.env.example` to `.env` and configure the values below.
+
+```bash
+cp .env.example .env
+```
+
+## Required Variables
+
+These variables are **required** for Walty to function. The application will fail to start or have severely degraded functionality without them.
+
+<ParamField path="DATABASE_URL" type="string" required>
+  PostgreSQL connection string for the wallet database.
+  
+  **Docker Compose**: Use the `db` service hostname
+  ```bash
+  DATABASE_URL=postgresql://wallet:wallet@db:5432/wallet
+  ```
+  
+  **Local Development**: Use localhost when running outside Docker
+  ```bash
+  DATABASE_URL=postgresql://wallet:wallet@localhost:5432/wallet
+  ```
+  
+  Default in `.env.example`: `postgresql://wallet:wallet@db:5432/wallet`
+</ParamField>
+
+<ParamField path="JWT_SECRET" type="string" required>
+  Secret key used to sign and verify JSON Web Tokens for authentication.
+  
+  **Generate a secure value**:
+  ```bash
+  openssl rand -base64 32
+  ```
+  
+  <Warning>
+    Change the default value in production. If compromised, attackers can forge authentication tokens.
+  </Warning>
+  
+  Default in `.env.example`: `your-secret-key-here-change-this-in-production`
+</ParamField>
+
+<ParamField path="SERVER_PEPPER" type="string" required>
+  HMAC key used to derive PIN challenges for server-side wallet backups.
+  
+  This value is mixed with user PINs to prevent offline brute-force attacks. An attacker who steals encrypted backups cannot crack PINs without also compromising `SERVER_PEPPER`.
+  
+  **Generate a secure value**:
+  ```bash
+  openssl rand -base64 32
+  ```
+  
+  <Warning>
+    This must remain secret and should never be committed to version control. If compromised, rotate immediately and force users to create new PIN backups.
+  </Warning>
+  
+  Default in `.env.example`: `your-pepper-key-here-change-this-in-production`
+</ParamField>
+
+<ParamField path="ALCHEMY_API_KEY" type="string" required>
+  API key for Alchemy's multichain RPC endpoints.
+  
+  Alchemy provides RPC access for all 5 supported networks:
+  - Ethereum (Chain ID 1)
+  - Arbitrum (Chain ID 42161)
+  - Base (Chain ID 8453)
+  - Optimism (Chain ID 10)
+  - Polygon (Chain ID 137)
+  
+  **Get a free key**: [alchemy.com](https://www.alchemy.com/)
+  
+  <Warning>
+    Without this key, balance queries and transactions will fail. Public RPC endpoints are unreliable and rate-limited.
+  </Warning>
+  
+  Default in `.env.example`: (empty, must be configured)
+</ParamField>
+
+<ParamField path="ZEROX_API_KEY" type="string" required>
+  API key for 0x protocol token swap aggregation.
+  
+  Required for all swap functionality across supported networks. Without this key, swap API calls will fail with 401 Unauthorized.
+  
+  **Get a free key**: [0x.org/docs/api](https://0x.org/docs/api)
+  
+  Default in `.env.example`: (empty, must be configured)
+</ParamField>
+
+<ParamField path="PAYMENTS_RECONCILE_SECRET" type="string" required>
+  Secret used to authenticate the internal payment reconciliation endpoint.
+  
+  External cron jobs must send this value in the `x-reconcile-secret` header when calling the reconciliation API.
+  
+  **Generate a secure value**:
+  ```bash
+  openssl rand -base64 32
+  ```
+  
+  Default in `.env.example`: (empty, must be configured)
+</ParamField>
+
+## Optional Variables
+
+These variables are **optional**. Walty will degrade gracefully if they are not configured.
+
+<ParamField path="ANKR_API_KEY" type="string">
+  API key for Ankr's multichain RPC endpoints (used as fallback between Alchemy and public RPCs).
+  
+  If not configured, Ankr is skipped and free public endpoints are used as the fallback provider.
+  
+  **Get a free key**: [ankr.com/rpc](https://www.ankr.com/rpc/)
+  
+  Default in `.env.example`: (empty, optional)
+</ParamField>
+
+<ParamField path="ONEINCH_API_KEY" type="string">
+  API key for 1inch DEX aggregator (used as swap fallback if 0x fails).
+  
+  If not configured, only 0x is used for token swaps. Having both providers improves swap success rates and pricing.
+  
+  **Get a free key**: [portal.1inch.dev](https://portal.1inch.dev/)
+  
+  Default in `.env.example`: (empty, optional)
+</ParamField>
+
+<ParamField path="COINGECKO_API_KEY" type="string">
+  API key for CoinGecko price and token metadata API.
+  
+  If not configured, Walty still works but will be subject to stricter rate limits on the free tier (10-30 requests/minute vs 500 requests/minute).
+  
+  **Get a free key**: [coingecko.com/en/api](https://www.coingecko.com/en/api)
+  
+  Default in `.env.example`: (empty, optional)
+</ParamField>
+
+<ParamField path="COINGECKO_API_BASE_URL" type="string">
+  Override the CoinGecko API base URL (rarely needed).
+  
+  Only set this if you need to use a custom CoinGecko endpoint or proxy.
+  
+  Default: `https://api.coingecko.com/api/v3`
+</ParamField>
+
+<ParamField path="COOKIE_SECURE" type="boolean">
+  Force the `Secure` flag on JWT authentication cookies.
+  
+  If not set, the `Secure` flag is automatically applied when `NODE_ENV=production`. Set to `true` if you need HTTPS-only cookies during local development.
+  
+  Default: Automatically set based on `NODE_ENV`
+</ParamField>
+
+## Automatic Variables
+
+These variables are set automatically by the runtime environment and should not be manually configured.
+
+<ParamField path="NODE_ENV" type="string">
+  Runtime environment identifier (`development` or `production`).
+  
+  Set automatically by Node.js and Next.js. Controls production optimizations and security settings.
+  
+  <Info>
+    Do not override this manually. Let the framework set it automatically.
+  </Info>
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_RPC_URL" type="string">
+  Reserved for future use. Not currently used in the application.
+  
+  <Note>
+    This variable exists in some configurations but has no effect. All RPC routing is handled server-side.
+  </Note>
+</ParamField>
+
+## Security Notes
+
+<Warning>
+  Never commit `.env` files to version control. Always use `.env.example` as a template and populate `.env` locally or via CI/CD secrets.
+</Warning>
+
+<Accordion title="Why can't pricing APIs be called from the browser?">
+  Pricing providers like CoinGecko and DefiLlama must be called from API routes, not directly from the browser. This is enforced by Content Security Policy (CSP) headers to prevent client-side API key leakage and CORS issues.
+</Accordion>
+
+<Accordion title="How do I rotate secrets safely?">
+  1. Generate new values using `openssl rand -base64 32`
+  2. Update environment variables in your deployment platform
+  3. Restart the application
+  4. For `SERVER_PEPPER`, notify users to create new PIN backups after rotation
+  5. For `JWT_SECRET`, all users will be logged out and must sign in again
+</Accordion>
+
+<Accordion title="Which variables should be kept secret?">
+  **Critical secrets** (never expose):
+  - `JWT_SECRET`
+  - `SERVER_PEPPER`
+  - `PAYMENTS_RECONCILE_SECRET`
+  - `DATABASE_URL` (contains credentials)
+  
+  **API keys** (protect but less critical):
+  - `ALCHEMY_API_KEY`
+  - `ANKR_API_KEY`
+  - `ZEROX_API_KEY`
+  - `ONEINCH_API_KEY`
+  - `COINGECKO_API_KEY`
+</Accordion>
+
+## Docker Configuration
+
+When using Docker Compose, environment variables are automatically loaded from `.env`:
+
+```yaml
+services:
+  app:
+    env_file:
+      - .env
+```
+
+The `DATABASE_URL` should use the `db` service hostname instead of `localhost`:
+
+```bash
+DATABASE_URL=postgresql://wallet:wallet@db:5432/wallet
+```
+
+See the [Docker Setup guide](/guides/docker-setup) for more details.

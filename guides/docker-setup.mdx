@@ -1,0 +1,403 @@
+---
+title: Docker Setup
+description: Running Walty with Docker Compose for development and production
+---
+
+Walty provides Docker Compose configurations for both full-stack deployment and development-only infrastructure. This guide covers both workflows.
+
+## Quick Start
+
+Get Walty running with Docker in 3 commands:
+
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+docker compose up --build
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Compose Files
+
+Walty includes two Docker Compose configurations:
+
+<CardGroup cols={2}>
+  <Card title="docker-compose.yml" icon="docker">
+    Full production stack with Next.js app and PostgreSQL database. Best for production deployments and end-to-end testing.
+  </Card>
+  
+  <Card title="compose.dev.yml" icon="code">
+    Development infrastructure only (PostgreSQL). Use when you want to run the app locally with `pnpm dev`.
+  </Card>
+</CardGroup>
+
+## Full Stack (docker-compose.yml)
+
+The production compose file runs both the application and database.
+
+### Services
+
+<Accordion title="app - Next.js Application">
+  Builds the Walty Next.js application from the Dockerfile and serves it on port 3000.
+  
+  **Configuration**:
+  - Build context: Current directory
+  - Port mapping: `3000:3000`
+  - Environment: Loaded from `.env`
+  - Dependency: Waits for `db` service to start
+  - CI mode: `CI=true` for consistent builds
+  
+  See `docker-compose.yml:2-11` for the full configuration.
+</Accordion>
+
+<Accordion title="db - PostgreSQL Database">
+  PostgreSQL 16 database for storing wallet data, accounts, and transactions.
+  
+  **Configuration**:
+  - Image: `postgres:16`
+  - Port mapping: `5432:5432`
+  - Restart policy: `always`
+  - Credentials: `wallet:wallet` (user:password)
+  - Database name: `wallet`
+  - Persistent storage: `postgres_data` volume
+  
+  See `docker-compose.yml:13-23` for the full configuration.
+</Accordion>
+
+### Port Mappings
+
+| Service | Container Port | Host Port | Purpose |
+|---------|---------------|-----------|----------|
+| app | 3000 | 3000 | Next.js web server |
+| db | 5432 | 5432 | PostgreSQL database |
+
+### Volume Mounts
+
+The `postgres_data` volume persists database data across container restarts:
+
+```yaml
+volumes:
+  postgres_data:
+```
+
+See `docker-compose.yml:25` for the volume definition.
+
+<Warning>
+  Deleting the `postgres_data` volume will permanently delete all wallet data. Use `docker compose down` (without `-v`) to preserve data.
+</Warning>
+
+### Usage
+
+<Steps>
+  <Step title="Configure Environment">
+    Copy `.env.example` to `.env` and configure required variables:
+    
+    ```bash
+    cp .env.example .env
+    ```
+    
+    At minimum, set:
+    - `JWT_SECRET`
+    - `SERVER_PEPPER`
+    - `ALCHEMY_API_KEY`
+    - `ZEROX_API_KEY`
+    - `PAYMENTS_RECONCILE_SECRET`
+  </Step>
+  
+  <Step title="Start the Stack">
+    Build and start both services:
+    
+    ```bash
+    docker compose up --build
+    ```
+    
+    Or run in detached mode:
+    
+    ```bash
+    docker compose up --build -d
+    ```
+  </Step>
+  
+  <Step title="Verify Services">
+    Check that both services are running:
+    
+    ```bash
+    docker compose ps
+    ```
+    
+    You should see both `app` and `db` with status `Up`.
+  </Step>
+  
+  <Step title="View Logs">
+    Monitor application logs:
+    
+    ```bash
+    docker compose logs -f app
+    ```
+    
+    Or view all logs:
+    
+    ```bash
+    docker compose logs -f
+    ```
+  </Step>
+</Steps>
+
+### Database Migrations
+
+Database migrations are **executed automatically** when the app container starts. You don't need to run them manually.
+
+<Info>
+  Drizzle ORM migrations are applied on startup. Check app logs to verify successful migration.
+</Info>
+
+## Development Infrastructure (compose.dev.yml)
+
+Use this configuration when you want to run only the database in Docker and run the Next.js app locally with `pnpm dev`.
+
+### Services
+
+<Accordion title="db - PostgreSQL Database (with healthcheck)">
+  PostgreSQL 16 database with health checks for development.
+  
+  **Configuration**:
+  - Image: `postgres:16`
+  - Port mapping: `5432:5432`
+  - Restart policy: `unless-stopped`
+  - Credentials: `wallet:wallet`
+  - Database name: `wallet`
+  - Persistent storage: `postgres_data` volume
+  - Health check: `pg_isready -U wallet -d wallet` every 10s
+  
+  See `compose.dev.yml:4-19` for the full configuration.
+</Accordion>
+
+### Health Check
+
+The development database includes a health check to ensure it's ready before the app connects:
+
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+  interval: 10s
+  timeout: 5s
+  retries: 10
+```
+
+See `compose.dev.yml:15-19` for the health check configuration.
+
+### Usage
+
+<Steps>
+  <Step title="Start Database Only">
+    ```bash
+    docker compose -f compose.dev.yml up -d
+    ```
+    
+    Or use the pnpm script:
+    ```bash
+    pnpm docker:dev
+    ```
+  </Step>
+  
+  <Step title="Update DATABASE_URL">
+    In your `.env` file, use `localhost` instead of `db`:
+    
+    ```bash
+    DATABASE_URL=postgresql://wallet:wallet@localhost:5432/wallet
+    ```
+  </Step>
+  
+  <Step title="Run Migrations">
+    Apply database schema:
+    
+    ```bash
+    pnpm db:migrate
+    ```
+  </Step>
+  
+  <Step title="Start Next.js Dev Server">
+    ```bash
+    pnpm dev
+    ```
+  </Step>
+  
+  <Step title="Stop Database When Done">
+    ```bash
+    docker compose -f compose.dev.yml down
+    ```
+    
+    Or use the pnpm script:
+    ```bash
+    pnpm docker:dev:down
+    ```
+  </Step>
+</Steps>
+
+## Common Commands
+
+<CodeGroup>
+```bash Full Stack
+# Start full stack
+docker compose up --build
+
+# Start in background
+docker compose up --build -d
+
+# Stop services (preserves data)
+docker compose down
+
+# Stop and remove volumes (deletes data)
+docker compose down -v
+
+# View logs
+docker compose logs -f app
+
+# Check service status
+docker compose ps
+
+# Restart a service
+docker compose restart app
+```
+
+```bash Development
+# Start database only
+docker compose -f compose.dev.yml up -d
+
+# Stop database
+docker compose -f compose.dev.yml down
+
+# View database logs
+docker compose -f compose.dev.yml logs -f db
+
+# Connect to database
+docker compose -f compose.dev.yml exec db psql -U wallet -d wallet
+```
+
+```bash pnpm Scripts
+# Full stack
+pnpm docker
+
+# Development database
+pnpm docker:dev
+
+# Stop development database
+pnpm docker:dev:down
+
+# Run Next.js dev server (requires database)
+pnpm dev
+
+# Run database migrations
+pnpm db:migrate
+
+# Open Drizzle Studio
+pnpm db:studio
+```
+</CodeGroup>
+
+## Environment Variables in Docker
+
+Both compose files automatically load environment variables from `.env`:
+
+```yaml
+services:
+  app:
+    env_file:
+      - .env
+```
+
+<Note>
+  When using Docker Compose, `DATABASE_URL` should use the service name `db` as the hostname, not `localhost`.
+</Note>
+
+**Full stack** (docker-compose.yml):
+```bash
+DATABASE_URL=postgresql://wallet:wallet@db:5432/wallet
+```
+
+**Development** (compose.dev.yml):
+```bash
+DATABASE_URL=postgresql://wallet:wallet@localhost:5432/wallet
+```
+
+See the [Environment Variables guide](/guides/environment-variables) for complete configuration details.
+
+## Troubleshooting
+
+<Accordion title="Port 3000 or 5432 already in use">
+  Another service is using the port. Either stop the conflicting service or change the port mapping:
+  
+  ```yaml
+  ports:
+    - "3001:3000"  # Map to host port 3001 instead
+  ```
+</Accordion>
+
+<Accordion title="Database connection refused">
+  The database may not be ready yet. Check:
+  
+  1. Database service is running: `docker compose ps`
+  2. Health check passed (dev mode): `docker compose -f compose.dev.yml ps`
+  3. Correct `DATABASE_URL` for your setup (`db` vs `localhost`)
+  4. Firewall not blocking port 5432
+</Accordion>
+
+<Accordion title="Migrations not applied">
+  For full stack:
+  - Migrations run automatically on app startup
+  - Check app logs: `docker compose logs app | grep migration`
+  
+  For development:
+  - Run manually: `pnpm db:migrate`
+  - Ensure database is running: `docker compose -f compose.dev.yml ps`
+</Accordion>
+
+<Accordion title="Changes not reflected after rebuild">
+  Docker may be using cached layers. Force a clean rebuild:
+  
+  ```bash
+  docker compose down
+  docker compose build --no-cache
+  docker compose up
+  ```
+</Accordion>
+
+<Accordion title="Lost database data after restart">
+  If you ran `docker compose down -v`, the `-v` flag deletes volumes including `postgres_data`.
+  
+  Always use `docker compose down` (without `-v`) to preserve data.
+</Accordion>
+
+## Production Recommendations
+
+<CardGroup cols={2}>
+  <Card title="Use Secrets Management" icon="lock">
+    Don't store production secrets in `.env` files. Use Docker secrets, Kubernetes secrets, or a secrets manager like Vault.
+  </Card>
+  
+  <Card title="External Database" icon="database">
+    For production, use a managed PostgreSQL service (AWS RDS, Google Cloud SQL, etc.) instead of running Postgres in Docker.
+  </Card>
+  
+  <Card title="Health Checks" icon="heart-pulse">
+    Add health checks to the app service for better orchestration and monitoring.
+  </Card>
+  
+  <Card title="Resource Limits" icon="gauge">
+    Set memory and CPU limits to prevent resource exhaustion:
+    ```yaml
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    ```
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+- Configure [environment variables](/guides/environment-variables) for your deployment
+- Learn about [multi-chain support](/guides/multi-chain) and RPC configuration
+- Set up [backup and recovery](/guides/backup-recovery) for wallet security
+- Review the [development guide](https://github.com/ignaciogarcia-dev/walty/blob/main/docs/development.md) for contributing

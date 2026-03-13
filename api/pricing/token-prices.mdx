@@ -1,0 +1,296 @@
+---
+title: 'Get Token Prices'
+api: 'GET /api/prices'
+description: 'Retrieve current USD prices for all supported tokens'
+---
+
+## Overview
+
+Retrieve real-time USD prices for all tokens supported by Walty. This endpoint aggregates token prices across all supported chains and returns them indexed by token symbol.
+
+Prices are sourced from CoinGecko with automatic fallback to DefiLlama if CoinGecko is unavailable.
+
+<Note>
+  This endpoint is **public** and does not require authentication.
+</Note>
+
+## Response
+
+Returns a JSON object mapping token symbols to USD prices.
+
+<ResponseField name="[symbol]" type="number">
+  USD price for the token symbol.
+  
+  Example: `"ETH": 3245.67`
+</ResponseField>
+
+### Common Token Symbols
+
+- `ETH`: Ethereum
+- `MATIC`: Polygon
+- `BNB`: BNB Chain
+- `USDC`: USD Coin
+- `USDT`: Tether
+- `DAI`: Dai Stablecoin
+- `WETH`: Wrapped Ethereum
+- `WBTC`: Wrapped Bitcoin
+
+And many more across multiple chains.
+
+## Example
+
+<CodeGroup>
+
+```bash cURL
+curl https://walty.app/api/prices
+```
+
+```javascript JavaScript
+const response = await fetch('https://walty.app/api/prices');
+const prices = await response.json();
+
+console.log(`ETH price: $${prices.ETH}`);
+console.log(`USDC price: $${prices.USDC}`);
+```
+
+```python Python
+import requests
+
+response = requests.get('https://walty.app/api/prices')
+prices = response.json()
+
+print(f"ETH price: ${prices['ETH']}")
+print(f"USDC price: ${prices['USDC']}")
+```
+
+```typescript TypeScript
+interface TokenPrices {
+  [symbol: string]: number;
+}
+
+const response = await fetch('https://walty.app/api/prices');
+const prices: TokenPrices = await response.json();
+
+const ethPrice = prices.ETH;
+const usdcPrice = prices.USDC;
+```
+
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "ETH": 3245.67,
+  "MATIC": 0.89,
+  "BNB": 412.34,
+  "USDC": 1.0,
+  "USDT": 1.0,
+  "DAI": 1.0,
+  "WETH": 3245.67,
+  "WBTC": 67234.89,
+  "LINK": 18.45,
+  "UNI": 12.34,
+  "AAVE": 156.78
+}
+```
+
+## Caching
+
+This endpoint implements aggressive caching to minimize external API calls:
+
+- **Cache duration**: 30 seconds
+- **Cache scope**: Server-side (shared across requests in the same instance)
+- **Stale data**: Returns cached data even if refresh fails
+
+<Note>
+  Prices are cached for **30 seconds**. Multiple requests within this window will receive identical data without hitting external pricing APIs.
+</Note>
+
+### Cache Behavior
+
+```javascript
+// First request: Fetches fresh data from CoinGecko/DefiLlama
+const prices1 = await fetch('https://walty.app/api/prices').then(r => r.json());
+
+// Second request within 30 seconds: Returns cached data
+const prices2 = await fetch('https://walty.app/api/prices').then(r => r.json();
+
+// After 30 seconds: Fetches fresh data again
+await new Promise(resolve => setTimeout(resolve, 31000));
+const prices3 = await fetch('https://walty.app/api/prices').then(r => r.json());
+```
+
+## Pricing Data Sources
+
+Walty uses a two-tier pricing system with automatic fallback:
+
+### Primary: CoinGecko
+
+- **API**: CoinGecko Simple Price API
+- **Endpoint**: `https://api.coingecko.com/api/v3/simple/price`
+- **Authentication**: Optional API key via `COINGECKO_API_KEY` environment variable
+- **Rate limits**: Depends on API tier (Free: 10-50 calls/minute)
+
+### Fallback: DefiLlama
+
+- **API**: DefiLlama Coins API
+- **Endpoint**: `https://coins.llama.fi/prices/current`
+- **Authentication**: None required
+- **Rate limits**: More generous for free tier
+
+Automatically switches to DefiLlama if CoinGecko request fails.
+
+## Stablecoin Pricing
+
+Stablecoins are hardcoded to **$1.00** to avoid circular pricing issues:
+
+- `USDC`: 1.0
+- `USDT`: 1.0
+- `DAI`: 1.0
+
+These prices are not fetched from external APIs.
+
+## Multi-Chain Support
+
+Token prices are deduplicated by CoinGecko ID:
+
+- Same token on different chains shares the same price
+- Example: USDC on Ethereum, Polygon, and BNB Chain all use `usd-coin` price
+- Wrapped tokens use their underlying asset's price (e.g., WETH uses ETH price)
+
+## Error Handling
+
+If both CoinGecko and DefiLlama fail, the endpoint returns the last cached data (if available) or an empty object.
+
+```javascript
+// Graceful degradation
+const response = await fetch('https://walty.app/api/prices');
+const prices = await response.json();
+
+if (Object.keys(prices).length === 0) {
+  console.warn('Unable to fetch token prices');
+  // Use fallback logic or show error to user
+} else {
+  // Prices available (may be from cache)
+}
+```
+
+<Warning>
+  Always check if the required token symbol exists in the response. Not all tokens may have pricing data available.
+</Warning>
+
+## Use Cases
+
+### Portfolio Valuation
+
+```javascript
+async function calculatePortfolioValue(holdings) {
+  const prices = await fetch('https://walty.app/api/prices').then(r => r.json());
+  
+  let totalValue = 0;
+  
+  for (const { symbol, amount } of holdings) {
+    const price = prices[symbol];
+    if (price) {
+      totalValue += amount * price;
+    }
+  }
+  
+  return totalValue;
+}
+
+const holdings = [
+  { symbol: 'ETH', amount: 1.5 },
+  { symbol: 'USDC', amount: 1000 },
+  { symbol: 'MATIC', amount: 5000 }
+];
+
+const value = await calculatePortfolioValue(holdings);
+console.log(`Portfolio value: $${value.toFixed(2)}`);
+```
+
+### Price Display
+
+```javascript
+async function displayTokenPrice(symbol) {
+  const prices = await fetch('https://walty.app/api/prices').then(r => r.json());
+  const price = prices[symbol];
+  
+  if (price === undefined) {
+    return `Price unavailable for ${symbol}`;
+  }
+  
+  return `${symbol}: $${price.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6
+  })}`;
+}
+```
+
+### Token Conversion
+
+```javascript
+async function convertTokens(fromSymbol, toSymbol, amount) {
+  const prices = await fetch('https://walty.app/api/prices').then(r => r.json());
+  
+  const fromPrice = prices[fromSymbol];
+  const toPrice = prices[toSymbol];
+  
+  if (!fromPrice || !toPrice) {
+    throw new Error('Price data unavailable');
+  }
+  
+  const usdValue = amount * fromPrice;
+  const convertedAmount = usdValue / toPrice;
+  
+  return convertedAmount;
+}
+
+// How much MATIC can I get for 1 ETH?
+const maticAmount = await convertTokens('ETH', 'MATIC', 1);
+console.log(`1 ETH = ${maticAmount.toFixed(2)} MATIC`);
+```
+
+## Rate Limiting Best Practices
+
+1. **Respect the cache**: Don't poll more frequently than every 30 seconds
+2. **Batch requests**: One request gets all token prices
+3. **Client-side caching**: Cache the response in your application layer
+4. **Error handling**: Always handle cases where prices may be unavailable
+
+```javascript
+class PriceCache {
+  constructor(ttl = 30000) {
+    this.cache = null;
+    this.lastFetch = 0;
+    this.ttl = ttl;
+  }
+  
+  async getPrices() {
+    if (this.cache && Date.now() - this.lastFetch < this.ttl) {
+      return this.cache;
+    }
+    
+    const response = await fetch('https://walty.app/api/prices');
+    this.cache = await response.json();
+    this.lastFetch = Date.now();
+    
+    return this.cache;
+  }
+}
+
+const priceCache = new PriceCache();
+const prices = await priceCache.getPrices();
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Get Token Images" icon="image" href="/api/pricing/token-images">
+    Fetch token logo images from CoinGecko
+  </Card>
+  <Card title="Create Payment Request" icon="money-bill" href="/api/payments/create-request">
+    Create payment requests with USD amounts
+  </Card>
+</CardGroup>

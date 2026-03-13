@@ -1,0 +1,164 @@
+---
+title: "Get Portfolio"
+api: "GET /api/portfolio"
+---
+
+Retrieves the complete portfolio for a specified wallet address, including token positions across all supported EVM chains with real-time pricing and allocations.
+
+## Authentication
+
+This endpoint requires authentication via JWT cookie.
+
+## Query Parameters
+
+<ParamField query="address" type="string" required>
+  The wallet address to fetch portfolio data for. Must be a valid EVM address.
+</ParamField>
+
+## Response
+
+<ResponseField name="positions" type="array">
+  Array of token positions across all chains, sorted by value (highest first).
+  
+  <Expandable title="TokenPosition">
+    <ResponseField name="token" type="object">
+      Token metadata from the token registry.
+      
+      <Expandable title="Token">
+        <ResponseField name="symbol" type="string">
+          Token symbol (e.g., "USDC", "ETH")
+        </ResponseField>
+        <ResponseField name="name" type="string">
+          Full token name
+        </ResponseField>
+        <ResponseField name="address" type="string">
+          Token contract address
+        </ResponseField>
+        <ResponseField name="decimals" type="number">
+          Number of decimal places for the token
+        </ResponseField>
+        <ResponseField name="coingeckoId" type="string">
+          CoinGecko identifier for price lookups
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="chainId" type="number">
+      Chain ID where the token is located (e.g., 1 for Ethereum, 137 for Polygon)
+    </ResponseField>
+    
+    <ResponseField name="balance" type="string">
+      Human-readable balance (formatted with token decimals)
+    </ResponseField>
+    
+    <ResponseField name="priceUsd" type="number">
+      Current USD price per token
+    </ResponseField>
+    
+    <ResponseField name="valueUsd" type="number">
+      Total USD value of this position (balance × priceUsd)
+    </ResponseField>
+    
+    <ResponseField name="allocation" type="number">
+      Percentage of total portfolio value (0-100)
+    </ResponseField>
+    
+    <ResponseField name="imageUrl" type="string | null">
+      URL to token icon/logo
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="totalUsd" type="number">
+  Total portfolio value in USD across all positions
+</ResponseField>
+
+<ResponseField name="userId" type="number">
+  The authenticated user's ID
+</ResponseField>
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message when request fails
+</ResponseField>
+
+**Status Codes:**
+- `400` - Missing address parameter
+- `401` - Unauthorized (invalid or missing JWT cookie)
+
+## Examples
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET "https://api.walty.io/api/portfolio?address=0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb" \
+  -H "Cookie: auth-token=YOUR_JWT_TOKEN"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://api.walty.io/api/portfolio?address=0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+  {
+    credentials: 'include', // Include cookies
+  }
+);
+
+const data = await response.json();
+console.log(data.positions);
+```
+
+</CodeGroup>
+
+### Success Response
+
+```json
+{
+  "positions": [
+    {
+      "token": {
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "decimals": 6,
+        "coingeckoId": "usd-coin"
+      },
+      "chainId": 1,
+      "balance": "1250.500000",
+      "priceUsd": 1.00,
+      "valueUsd": 1250.50,
+      "allocation": 62.5,
+      "imageUrl": null
+    },
+    {
+      "token": {
+        "symbol": "ETH",
+        "name": "Ethereum",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "coingeckoId": "ethereum"
+      },
+      "chainId": 1,
+      "balance": "0.15",
+      "priceUsd": 3500.00,
+      "valueUsd": 525.00,
+      "allocation": 26.25,
+      "imageUrl": null
+    }
+  ],
+  "totalUsd": 2000.00,
+  "userId": 42
+}
+```
+
+### Error Response
+
+```json
+{
+  "error": "Missing address"
+}
+```
+
+<Note>
+  The `balanceRaw` field (bigint) is stripped from the response as it's not JSON-serializable. Only the formatted `balance` string is returned.
+</Note>

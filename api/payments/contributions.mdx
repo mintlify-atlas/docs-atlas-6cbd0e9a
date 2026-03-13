@@ -1,0 +1,255 @@
+---
+title: 'Get Payment Contributions'
+api: 'GET /api/payment-requests/{id}/contributions'
+description: 'Retrieve all contributions for a split payment request'
+---
+
+## Overview
+
+Retrieve the list of individual contributions for a split payment request. This endpoint returns all partial payments that have been detected on the blockchain, along with their confirmation status.
+
+This endpoint is public and does not require authentication.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the payment request.
+  
+  Example: `clx8k2m9n0000qz7x5y4z1abc`
+</ParamField>
+
+## Response
+
+<ResponseField name="contributions" type="array">
+  Array of contribution objects, ordered by creation time (oldest first).
+</ResponseField>
+
+### Contribution Object
+
+<ResponseField name="id" type="number">
+  Unique identifier for this contribution.
+</ResponseField>
+
+<ResponseField name="paymentRequestId" type="string">
+  ID of the parent payment request.
+</ResponseField>
+
+<ResponseField name="txHash" type="string">
+  Transaction hash on Polygon blockchain.
+  
+  Can be viewed on [Polygonscan](https://polygonscan.com) as: `https://polygonscan.com/tx/{txHash}`
+</ResponseField>
+
+<ResponseField name="payerAddress" type="string">
+  Wallet address of the user who made this contribution.
+</ResponseField>
+
+<ResponseField name="amountToken" type="string">
+  Amount contributed in token's smallest unit (wei).
+  
+  For USDC/USDT (6 decimals): divide by 1,000,000 to get human-readable value.
+  
+  Example: `"30000000"` = 30 USDC
+</ResponseField>
+
+<ResponseField name="amountUsd" type="string">
+  USD value of the contribution.
+  
+  Example: `"30.00"`
+</ResponseField>
+
+<ResponseField name="tokenSymbol" type="string">
+  Token used for this contribution (`USDC` or `USDT`).
+</ResponseField>
+
+<ResponseField name="confirmations" type="number">
+  Current number of blockchain confirmations.
+  
+  Increments as new blocks are mined. Maximum tracked value is 2.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status of this contribution.
+  
+  <Expandable title="Status values">
+    - `pending`: Transaction detected, waiting for first confirmation
+    - `confirming`: Has 1 confirmation, waiting for 2nd
+    - `confirmed`: Has reached 2 confirmations
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="blockNumber" type="string | null">
+  Block number where the transaction was included.
+  
+  `null` if transaction is still pending in mempool.
+</ResponseField>
+
+<ResponseField name="detectedAt" type="string | null">
+  ISO 8601 timestamp when the contribution was first detected by Walty's monitoring system.
+</ResponseField>
+
+<ResponseField name="confirmedAt" type="string | null">
+  ISO 8601 timestamp when the contribution reached required confirmations (2).
+  
+  `null` if still pending or confirming.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp when the contribution record was created in the database.
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```bash cURL
+curl https://walty.app/api/payment-requests/clx8k2m9n0000qz7x5y4z1abc/contributions
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://walty.app/api/payment-requests/clx8k2m9n0000qz7x5y4z1abc/contributions'
+);
+
+const { contributions } = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'https://walty.app/api/payment-requests/clx8k2m9n0000qz7x5y4z1abc/contributions'
+)
+
+data = response.json()
+contributions = data['contributions']
+```
+
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "contributions": [
+    {
+      "id": 1,
+      "paymentRequestId": "clx8k2m9n0000qz7x5y4z1abc",
+      "txHash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "payerAddress": "0x1111111111111111111111111111111111111111",
+      "amountToken": "30000000",
+      "amountUsd": "30.00",
+      "tokenSymbol": "USDC",
+      "confirmations": 2,
+      "status": "confirmed",
+      "blockNumber": "12345678",
+      "detectedAt": "2026-03-13T15:32:00.000Z",
+      "confirmedAt": "2026-03-13T15:33:00.000Z",
+      "createdAt": "2026-03-13T15:32:00.000Z"
+    },
+    {
+      "id": 2,
+      "paymentRequestId": "clx8k2m9n0000qz7x5y4z1abc",
+      "txHash": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      "payerAddress": "0x2222222222222222222222222222222222222222",
+      "amountToken": "25000000",
+      "amountUsd": "25.00",
+      "tokenSymbol": "USDC",
+      "confirmations": 1,
+      "status": "confirming",
+      "blockNumber": "12345690",
+      "detectedAt": "2026-03-13T15:35:00.000Z",
+      "confirmedAt": null,
+      "createdAt": "2026-03-13T15:35:00.000Z"
+    },
+    {
+      "id": 3,
+      "paymentRequestId": "clx8k2m9n0000qz7x5y4z1abc",
+      "txHash": "0xfedcbafedcbafedcbafedcbafedcbafedcbafedcbafedcbafedcbafedcbafed",
+      "payerAddress": "0x3333333333333333333333333333333333333333",
+      "amountToken": "15000000",
+      "amountUsd": "15.00",
+      "tokenSymbol": "USDC",
+      "confirmations": 0,
+      "status": "pending",
+      "blockNumber": null,
+      "detectedAt": "2026-03-13T15:38:00.000Z",
+      "confirmedAt": null,
+      "createdAt": "2026-03-13T15:38:00.000Z"
+    }
+  ]
+}
+```
+
+## Error Responses
+
+| Status Code | Error Message | Description |
+|-------------|---------------|-------------|
+| 404 | `not found` | Payment request with this ID does not exist |
+
+<Note>
+  This endpoint returns contributions for **all** payment requests, whether split or single payment. For non-split payment requests, the array will be empty.
+</Note>
+
+## Use Cases
+
+### Tracking Split Payment Progress
+
+```javascript
+async function getPaymentProgress(requestId) {
+  const [request, contributionsData] = await Promise.all([
+    fetch(`https://walty.app/api/payment-requests/${requestId}`).then(r => r.json()),
+    fetch(`https://walty.app/api/payment-requests/${requestId}/contributions`).then(r => r.json())
+  ]);
+  
+  const { contributions } = contributionsData;
+  const totalPaid = parseFloat(request.totalPaidUsd);
+  const totalRequired = parseFloat(request.amountUsd);
+  const percentComplete = (totalPaid / totalRequired) * 100;
+  
+  return {
+    percentComplete,
+    contributorsCount: contributions.length,
+    confirmedContributions: contributions.filter(c => c.status === 'confirmed').length,
+    pendingContributions: contributions.filter(c => c.status !== 'confirmed').length
+  };
+}
+```
+
+### Displaying Contributors
+
+```javascript
+function displayContributors(contributions) {
+  return contributions.map(c => ({
+    address: c.payerAddress,
+    amount: `$${c.amountUsd} ${c.tokenSymbol}`,
+    timestamp: new Date(c.detectedAt).toLocaleString(),
+    confirmed: c.status === 'confirmed',
+    explorerUrl: `https://polygonscan.com/tx/${c.txHash}`
+  }));
+}
+```
+
+## Blockchain Verification
+
+Each contribution is verified on the Polygon blockchain:
+
+1. **Detection**: System scans for transfers to the merchant's wallet
+2. **Validation**: Verifies token type matches the payment request
+3. **Confirmation Tracking**: Monitors confirmations from 0 → 1 → 2
+4. **Aggregation**: Updates payment request's `totalPaidUsd` when confirmed
+
+<Warning>
+  Contributions are only counted toward the payment total after reaching `confirmed` status (2 confirmations). Pending or confirming contributions are tracked but not yet applied.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Get Payment Request" icon="magnifying-glass" href="/api/payments/get-request">
+    View complete payment request with aggregated totals
+  </Card>
+  <Card title="Payment History" icon="clock-rotate-left" href="/api/payments/history">
+    Browse all payment requests
+  </Card>
+</CardGroup>

@@ -1,0 +1,173 @@
+---
+title: Wallet Creation
+description: Learn how to create and secure a new Walty wallet with 24-word seed phrase encryption
+---
+
+## Overview
+
+Walty uses industry-standard BIP-39 seed phrases to generate self-custodial wallets. All cryptographic operations happen client-side in your browser, and your seed material never leaves your device unencrypted.
+
+<Info>
+Walty generates **24-word seed phrases** (256-bit entropy) using viem's `generateMnemonic` function with the English wordlist.
+</Info>
+
+## Wallet Generation Process
+
+<Steps>
+  <Step title="Generate 24-word seed phrase">
+    Walty uses 256-bit entropy to create a cryptographically secure 24-word mnemonic phrase:
+
+    ```typescript lib/wallet.ts
+    import { generateMnemonic, mnemonicToAccount, english } from "viem/accounts"
+
+    export function createWallet() {
+      const mnemonic = generateMnemonic(english, 256)
+      const account = mnemonicToAccount(mnemonic)
+    
+      return {
+        mnemonic,
+        address: account.address,
+      }
+    }
+    ```
+
+    The 256-bit entropy provides stronger security than the standard 128-bit (12-word) phrases used by many wallets.
+  </Step>
+
+  <Step title="Derive Ethereum address">
+    The seed phrase is converted to an Ethereum account using the BIP-44 derivation path (`m/44'/60'/0'/0/0`).
+
+    This produces:
+    - A unique Ethereum address (compatible with all EVM chains)
+    - The corresponding private key for transaction signing
+  </Step>
+
+  <Step title="Encrypt the seed phrase">
+    Before storage, your seed phrase is encrypted using AES-256-GCM with a password you provide.
+
+    See the [Security](/features/security) page for encryption details.
+  </Step>
+
+  <Step title="Store encrypted wallet locally">
+    The encrypted wallet data is stored in your browser's IndexedDB. Your original seed phrase and private keys are **never** stored in plaintext.
+  </Step>
+</Steps>
+
+## Wallet Creation Methods
+
+<CardGroup cols={2}>
+  <Card title="Create New Wallet" icon="plus">
+    Generate a fresh 24-word seed phrase and create a new Ethereum account.
+  </Card>
+  <Card title="Import Existing Wallet" icon="download">
+    Restore an existing wallet by entering your 24-word recovery phrase.
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<Warning>
+**Write down your seed phrase and store it securely offline.** This is the only way to recover your wallet if you lose access to your device.
+</Warning>
+
+### Seed Phrase Security
+
+- **Never share** your seed phrase with anyone
+- **Never enter** your seed phrase on suspicious websites
+- **Write it down** on paper and store it in a secure location
+- **Use multiple backups** stored in different physical locations
+- **Never store** your seed phrase in digital form (screenshots, cloud storage, etc.)
+
+<Tip>
+Consider using a hardware security module (HSM) or metal backup solution for long-term seed phrase storage.
+</Tip>
+
+### Password Requirements
+
+- Use a strong, unique password (12+ characters)
+- Include uppercase, lowercase, numbers, and symbols
+- Never reuse passwords from other services
+- Consider using a password manager
+
+## Wallet File Structure
+
+Encrypted wallet data stored in IndexedDB:
+
+```typescript
+type EncryptedSeed = {
+  ciphertext: string  // Base64-encoded encrypted seed phrase
+  iv: string          // Base64-encoded initialization vector
+  salt: string        // Base64-encoded PBKDF2 salt
+  version: 1          // Encryption scheme version
+}
+```
+
+## Multi-Chain Support
+
+A single Walty wallet works across all supported EVM networks:
+
+- **Ethereum** (Mainnet)
+- **Arbitrum**
+- **Base**
+- **Optimism**
+- **Polygon**
+
+Your Ethereum address remains the same across all chains, simplifying asset management.
+
+## Wallet Recovery
+
+If you lose access to your device:
+
+<Steps>
+  <Step title="Install Walty on a new device">
+    Download and install Walty on your new device or browser.
+  </Step>
+  <Step title="Select 'Import Wallet'">
+    Choose the import option instead of creating a new wallet.
+  </Step>
+  <Step title="Enter your 24-word seed phrase">
+    Type or paste your recovery phrase in the correct order.
+  </Step>
+  <Step title="Set a new password">
+    Create a new encryption password (can be different from your original password).
+  </Step>
+</Steps>
+
+<Info>
+Your seed phrase is the **master key** to your wallet. The encryption password is only used to protect the locally stored encrypted seed.
+</Info>
+
+## Technical Details
+
+### Entropy Source
+
+Walty uses the browser's `crypto.getRandomValues()` API for cryptographically secure random number generation. This meets NIST SP 800-90A standards.
+
+### Derivation Path
+
+Walty follows the BIP-44 standard for hierarchical deterministic (HD) wallets:
+
+```
+m/44'/60'/0'/0/0
+```
+
+- `44'`: BIP-44 purpose
+- `60'`: Ethereum coin type
+- `0'`: Account index
+- `0`: External chain
+- `0`: Address index
+
+### Wordlist
+
+The English BIP-39 wordlist contains 2,048 unique words. With 24 words, this provides 2^256 possible combinations (approximately 1.16 × 10^77).
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Security" icon="shield" href="/features/security">
+    Learn about encryption, PIN backups, and wallet locking
+  </Card>
+  <Card title="Send & Receive" icon="arrow-right-arrow-left" href="/features/send-receive">
+    Start sending and receiving tokens
+  </Card>
+</CardGroup>

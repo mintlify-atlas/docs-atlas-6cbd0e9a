@@ -1,0 +1,402 @@
+---
+title: Portfolio Tracking
+description: Track multi-chain token balances, USD valuations, and portfolio allocation in real-time
+---
+
+## Overview
+
+Walty aggregates your token balances across all supported EVM chains into a unified portfolio view. Real-time price feeds provide accurate USD valuations and allocation percentages.
+
+<Info>
+Your portfolio updates automatically as transactions confirm on-chain. No manual refresh needed.
+</Info>
+
+## Multi-Chain Balance Aggregation
+
+Walty fetches balances from all supported networks in parallel:
+
+```typescript lib/portfolio/portfolio-engine.ts
+export async function getPortfolio(
+  address: string
+): Promise<{ positions: TokenPosition[]; totalUsd: number }> {
+  const networks = getEVMNetworks()
+
+  // 1. Fetch balances from all chains in parallel (allSettled = resilient)
+  const balanceResults = await Promise.allSettled(
+    networks.map(async (network) => {
+      const tokens = TOKEN_REGISTRY[network.id] ?? []
+      if (tokens.length === 0) return { chainId: network.id, balances: new Map<string, bigint>() }
+
+      const adapter = getAdapter(network.id)
+      const balances = await adapter.getTokenBalances(address, tokens)
+      return { chainId: network.id, balances }
+    })
+  )
+
+  // ... continue processing
+}
+```
+
+### Supported Networks
+
+<CardGroup cols={2}>
+  <Card title="Ethereum" icon="ethereum">
+    Mainnet balances for ETH and ERC-20 tokens
+  </Card>
+  <Card title="Arbitrum" icon="layer-group">
+    Layer 2 scaling solution with lower fees
+  </Card>
+  <Card title="Base" icon="b">
+    Coinbase's Layer 2 network
+  </Card>
+  <Card title="Optimism" icon="o">
+    Optimistic rollup Layer 2
+  </Card>
+  <Card title="Polygon" icon="triangle">
+    MATIC sidechain with EVM compatibility
+  </Card>
+</CardGroup>
+
+## Token Positions
+
+Each token in your portfolio is represented as a position:
+
+```typescript
+export type TokenPosition = {
+  token: Token              // Token metadata (symbol, name, decimals, etc.)
+  chainId: number          // Network ID (1 = Ethereum, 42161 = Arbitrum, etc.)
+  balance: string          // Formatted balance (e.g., "1.234567")
+  balanceRaw?: bigint      // Raw balance in smallest unit (wei)
+  priceUsd: number         // Current USD price per token
+  valueUsd: number         // Total USD value (balance × price)
+  allocation: number       // Percentage of total portfolio (0-100)
+  imageUrl: string | null  // Token logo URL
+}
+```
+
+### Balance Calculation
+
+Walty queries balances using chain-specific adapters:
+
+- **Native tokens** (ETH, MATIC): `eth_getBalance` RPC call
+- **ERC-20 tokens**: `balanceOf(address)` contract call
+
+```typescript lib/portfolio/portfolio-engine.ts
+for (const token of tokens) {
+  const balanceRaw = balances.get(token.symbol) ?? 0n
+  const balance = formatUnits(balanceRaw, token.decimals)
+  const priceUsd = pricesByCoingeckoId[token.coingeckoId] ?? 0
+  const valueUsd = parseFloat(balance) * priceUsd
+
+  positions.push({
+    token,
+    chainId,
+    balance,
+    balanceRaw,
+    priceUsd,
+    valueUsd,
+    allocation: 0,
+    imageUrl: null,
+  })
+}
+```
+
+## USD Valuations
+
+Walty fetches real-time token prices from CoinGecko:
+
+<Steps>
+  <Step title="Collect unique tokens">
+    All tokens across all chains are deduplicated by their CoinGecko ID:
+
+    ```typescript lib/portfolio/portfolio-engine.ts
+    const allCoingeckoIds = new Set<string>()
+    for (const network of networks) {
+      const tokens = TOKEN_REGISTRY[network.id] ?? []
+      for (const token of tokens) {
+        allCoingeckoIds.add(token.coingeckoId)
+      }
+    }
+    ```
+
+    This ensures multi-chain tokens (like USDC on Ethereum, Arbitrum, and Base) only fetch one price.
+  </Step>
+
+  <Step title="Fetch prices in batch">
+    A single API call retrieves all prices:
+
+    ```typescript lib/portfolio/portfolio-engine.ts
+    const pricesByCoingeckoId = await getPrices([...allCoingeckoIds])
+    ```
+  </Step>
+
+  <Step title="Calculate USD values">
+    Each position's value is calculated:
+
+    ```
+    valueUsd = balance × priceUsd
+    ```
+
+    For example:
+    - Balance: 1.5 ETH
+    - Price: $2,340.00
+    - Value: $3,510.00
+  </Step>
+</Steps>
+
+<Info>
+Prices are cached for 60 seconds to reduce API calls and improve performance.
+</Info>
+
+## Portfolio Allocation
+
+Walty calculates each position's percentage of your total portfolio:
+
+```typescript lib/portfolio/portfolio-engine.ts
+// Calculate total and allocations
+const totalUsd = positions.reduce((sum, p) => sum + p.valueUsd, 0)
+
+for (const p of positions) {
+  p.allocation = totalUsd > 0 ? (p.valueUsd / totalUsd) * 100 : 0
+}
+```
+
+### Allocation Example
+
+If your portfolio is:
+- 1.5 ETH @ $2,340 = **$3,510** (70.2%)
+- 500 USDC @ $1.00 = **$500** (10.0%)
+- 0.25 ETH on Arbitrum @ $2,340 = **$585** (11.7%)
+- 200 MATIC @ $0.80 = **$160** (3.2%)
+- 50 DAI @ $1.00 = **$50** (1.0%)
+- **Total**: $4,805
+
+The allocation percentages show how your value is distributed across tokens and chains.
+
+## Sorting & Filtering
+
+Positions are automatically sorted by:
+
+1. **Non-zero balances first**: Tokens you own appear at the top
+2. **USD value descending**: Largest holdings shown first
+
+```typescript lib/portfolio/portfolio-engine.ts
+positions.sort((a, b) => {
+  const aHasBalance = a.valueUsd > 0 ? 1 : 0
+  const bHasBalance = b.valueUsd > 0 ? 1 : 0
+  if (aHasBalance !== bHasBalance) return bHasBalance - aHasBalance
+  return b.valueUsd - a.valueUsd
+})
+```
+
+This ensures your portfolio displays the most relevant information first.
+
+## Portfolio Dashboard
+
+The main wallet view shows:
+
+### Summary Cards
+
+- **Total Portfolio Value**: Sum of all positions across all chains in USD
+- **24h Change**: Price movement (when available from price API)
+- **Token Count**: Number of unique tokens you hold
+- **Chain Distribution**: Visual breakdown by network
+
+### Position List
+
+Each position displays:
+
+- Token logo and symbol
+- Chain name/icon
+- Balance (formatted to 4 decimal places)
+- USD value
+- Allocation percentage
+- 24h price change (when available)
+
+<Tip>
+Click any position to view transaction history, send tokens, or swap to another token.
+</Tip>
+
+## Real-Time Updates
+
+Your portfolio updates automatically when:
+
+- ✅ Transactions confirm on-chain
+- ✅ Token prices change (every 60 seconds)
+- ✅ You switch between networks
+- ✅ New tokens are received
+
+<Info>
+Walty uses RPC providers with WebSocket support for instant transaction confirmations where available.
+</Info>
+
+## Token Registry
+
+Walty tracks a curated list of popular tokens per chain:
+
+```typescript
+const TOKEN_REGISTRY: Record<number, Token[]> = {
+  1: [ // Ethereum
+    { symbol: "ETH", type: "native", decimals: 18, coingeckoId: "ethereum", ... },
+    { symbol: "USDC", type: "erc20", address: "0xA0b86...", decimals: 6, coingeckoId: "usd-coin", ... },
+    { symbol: "USDT", type: "erc20", address: "0xdac17...", decimals: 6, coingeckoId: "tether", ... },
+    // ...
+  ],
+  42161: [ // Arbitrum
+    { symbol: "ETH", type: "native", decimals: 18, coingeckoId: "ethereum", ... },
+    { symbol: "USDC", type: "erc20", address: "0xFF970...", decimals: 6, coingeckoId: "usd-coin", ... },
+    // ...
+  ],
+  // ...
+}
+```
+
+### Adding Custom Tokens
+
+To track tokens not in the default registry:
+
+1. Navigate to Settings → Custom Tokens
+2. Enter token contract address
+3. Walty fetches metadata (symbol, decimals, name) from the contract
+4. Token appears in your portfolio
+
+<Warning>
+**Verify contract addresses carefully.** Malicious token contracts can display fake balances or steal approvals.
+</Warning>
+
+## Performance Optimization
+
+### Parallel Fetching
+
+Walty uses `Promise.allSettled()` to fetch all chain balances simultaneously:
+
+```typescript
+const balanceResults = await Promise.allSettled(
+  networks.map(async (network) => {
+    const adapter = getAdapter(network.id)
+    const balances = await adapter.getTokenBalances(address, tokens)
+    return { chainId: network.id, balances }
+  })
+)
+```
+
+This reduces total load time from ~5 seconds (sequential) to ~1 second (parallel).
+
+### Error Resilience
+
+`allSettled` ensures that if one chain's RPC is down, other chains still load:
+
+```typescript
+for (const result of balanceResults) {
+  if (result.status !== "fulfilled") continue
+  // Process successful results
+}
+```
+
+### Price Deduplication
+
+Fetching prices by CoinGecko ID (not token address) means:
+- USDC on 5 chains = **1 price fetch**
+- ETH on 4 chains = **1 price fetch**
+- Total API calls: ~20 (not ~100)
+
+<Tip>
+Self-hosted instances can increase price cache duration to reduce CoinGecko API usage and stay within free tier limits.
+</Tip>
+
+## Portfolio Export
+
+Export your portfolio data for tax reporting or personal records:
+
+<Steps>
+  <Step title="Navigate to Portfolio">
+    Open the main wallet view showing all positions.
+  </Step>
+  <Step title="Click Export">
+    Choose CSV or JSON format.
+  </Step>
+  <Step title="Select date range">
+    Export historical portfolio snapshots (if available).
+  </Step>
+  <Step title="Download file">
+    CSV is compatible with Excel, Google Sheets, and tax software.
+  </Step>
+</Steps>
+
+Exported data includes:
+- Timestamp
+- Token symbol and name
+- Chain ID and name
+- Balance
+- USD price
+- USD value
+- Allocation percentage
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Portfolio not loading">
+    Check that:
+    - You have an internet connection
+    - RPC providers are operational (check status page)
+    - Your wallet is unlocked
+
+    **Solution**: Refresh the page or switch to a different RPC provider in settings.
+  </Accordion>
+
+  <Accordion title="Token balances showing zero">
+    This can happen if:
+    - RPC request failed
+    - Token contract is on a different chain
+    - Token is not in the registry
+
+    **Solution**: Add the token manually via Settings → Custom Tokens.
+  </Accordion>
+
+  <Accordion title="USD values are incorrect">
+    Price data may be:
+    - Stale (older than 60 seconds)
+    - Unavailable for the token
+    - From a low-liquidity source
+
+    **Solution**: Refresh the page to fetch latest prices. For obscure tokens, USD values may not be available.
+  </Accordion>
+
+  <Accordion title="Missing tokens after receiving">
+    Newly received tokens appear after:
+    - Transaction confirms on-chain
+    - Portfolio refreshes (automatic or manual)
+
+    **Solution**: Wait for transaction confirmation, then refresh portfolio.
+  </Accordion>
+</AccordionGroup>
+
+## Privacy Considerations
+
+<Info>
+Walty fetches balance and price data via RPC and price APIs. Your Ethereum address is visible to these services.
+</Info>
+
+### Data Sharing
+
+When loading your portfolio:
+- **RPC providers** see your address and balance queries
+- **CoinGecko** sees requested token price IDs (not your address)
+- **Walty servers** (if self-hosted) see your address
+
+### Privacy Enhancements
+
+- Use your own RPC endpoints (configure in `.env`)
+- Self-host Walty to avoid third-party servers
+- Use Tor or VPN to hide your IP address from RPC providers
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Send & Receive" icon="arrow-right-arrow-left" href="/features/send-receive">
+    Transfer tokens from your portfolio
+  </Card>
+  <Card title="Token Swaps" icon="repeat" href="/features/token-swaps">
+    Exchange tokens without leaving your wallet
+  </Card>
+</CardGroup>

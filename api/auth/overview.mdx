@@ -1,0 +1,109 @@
+---
+title: "Authentication Overview"
+description: "JWT-based session authentication for Walty API"
+---
+
+## Authentication System
+
+Walty uses **JWT (JSON Web Token)** based session authentication with secure HTTP-only cookies. All authentication endpoints are rate-limited to prevent abuse.
+
+### How It Works
+
+1. **Registration/Login**: User provides credentials via `/api/auth/register` or `/api/auth/login`
+2. **Token Generation**: Server creates a JWT token containing `userId` and `userType`
+3. **Cookie Storage**: Token is stored in an HTTP-only, Secure, SameSite=Strict cookie
+4. **Token Verification**: Protected endpoints use `requireAuth()` middleware to verify the token
+5. **Logout**: Client calls `/api/auth/logout` to clear the authentication cookie
+
+### JWT Payload
+
+The JWT token contains the following claims:
+
+```typescript
+interface AuthPayload {
+  userId: number
+  userType: "person" | "business"
+}
+```
+
+### Token Configuration
+
+- **Expiration**: 7 days
+- **Algorithm**: HS256 (default)
+- **Secret**: Configured via `JWT_SECRET` environment variable
+
+### Cookie Settings
+
+Authentication cookies are set with strict security attributes:
+
+- `HttpOnly`: Prevents JavaScript access to the cookie
+- `Secure`: Cookie only sent over HTTPS
+- `SameSite=Strict`: Prevents CSRF attacks
+- `Path=/`: Cookie accessible across the entire domain
+
+### Protected Endpoints
+
+To protect an API endpoint, use the `requireAuth()` middleware:
+
+```typescript
+import { requireAuth } from "@/lib/auth"
+import { NextRequest } from "next/server"
+
+export async function GET(req: NextRequest) {
+  const auth = requireAuth(req) // Throws error if unauthorized
+  const { userId, userType } = auth
+  
+  // Your protected endpoint logic
+}
+```
+
+If the token is missing or invalid, `requireAuth()` throws an error with the message "Unauthorized".
+
+### Rate Limiting
+
+All authentication endpoints implement rate limiting based on the client's IP address (from `x-forwarded-for` header). Exceeding the rate limit returns a `429 Too Many Requests` error.
+
+## Authentication Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Register" icon="user-plus" href="/api/auth/register">
+    Create a new user account
+  </Card>
+  <Card title="Login" icon="right-to-bracket" href="/api/auth/login">
+    Authenticate existing user
+  </Card>
+  <Card title="Logout" icon="right-from-bracket" href="/api/auth/logout">
+    Clear authentication session
+  </Card>
+</CardGroup>
+
+## Error Handling
+
+Authentication endpoints return standardized error responses:
+
+<ResponseField name="error" type="string">
+  Error code describing what went wrong
+</ResponseField>
+
+### Common Error Codes
+
+| Error Code | HTTP Status | Description |
+|------------|-------------|-------------|
+| `Too many requests` | 429 | Rate limit exceeded |
+| `invalid-email-or-password` | 400 | Email format invalid or password too short |
+| `email-already-in-use` | 409 | Email already registered |
+| `invalid credentials` | 401 | Login failed - wrong email or password |
+| `unexpected-error` | 500 | Internal server error |
+
+## Security Best Practices
+
+<Note>
+  - Always use HTTPS in production to protect the Secure cookie attribute
+  - Store `JWT_SECRET` securely and never commit it to version control
+  - The 7-day token expiration balances security with user convenience
+  - Rate limiting protects against brute force attacks
+</Note>
+
+<Warning>
+  The authentication system uses bcrypt with 10 salt rounds for password hashing. Never store or transmit plain-text passwords.
+</Warning>

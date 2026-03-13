@@ -1,0 +1,211 @@
+---
+title: Contributing to Walty
+description: Learn how to contribute to Walty using our issue-first workflow
+icon: code-pull-request
+---
+
+Thanks for your interest in contributing to Walty.
+
+This project follows an issue-first workflow to keep collaboration open, clear, and manageable for contributors and maintainers.
+
+## Guiding Principles
+
+- Keep scope small and reviewable.
+- Prefer one issue and one pull request per change.
+- Document decisions in issues so others can follow context.
+- Prioritize predictable behavior over fast but risky merges.
+
+## Before You Start Coding
+
+For anything beyond tiny typo/docs fixes:
+
+<Steps>
+  <Step title="Open or pick an issue">
+    Create a new issue or select an existing one from the [GitHub issues](https://github.com/ignaciogarcia-dev/walty/issues).
+  </Step>
+  
+  <Step title="Wait for scope confirmation">
+    For large features or refactor work, wait for maintainer confirmation on scope before starting.
+  </Step>
+  
+  <Step title="Claim the issue">
+    Comment that you are working on it to avoid duplicated effort.
+  </Step>
+</Steps>
+
+<Warning>
+Direct PRs without an issue may be closed and redirected to issue discussion first.
+</Warning>
+
+## Issue-First Workflow
+
+<Steps>
+  <Step title="Open an issue using a template">
+    Choose from:
+    - `Bug report`
+    - `Feature request`
+    - `Contribution proposal`
+  </Step>
+  
+  <Step title="Align on scope">
+    Discuss and agree on scope and acceptance criteria in the issue comments.
+  </Step>
+  
+  <Step title="Create a branch">
+    Create a branch from `main` using the suggested format:
+    - `fix/123-short-description`
+    - `feat/456-short-description`
+    - `docs/789-short-description`
+  </Step>
+  
+  <Step title="Implement the change">
+    Write your code following the project conventions.
+  </Step>
+  
+  <Step title="Open a PR">
+    Create a pull request and link the issue using `Closes #123`.
+  </Step>
+  
+  <Step title="Address feedback">
+    Respond to review feedback and update docs/tests as needed.
+  </Step>
+</Steps>
+
+## Local Development
+
+Setup and workflow details are covered in:
+
+<CardGroup cols={2}>
+  <Card title="Getting Started" icon="rocket" href="/quickstart">
+    Initial setup and installation
+  </Card>
+  <Card title="Development Guide" icon="code" href="/developer/development">
+    Detailed development workflow
+  </Card>
+</CardGroup>
+
+### Common Commands
+
+<CodeGroup>
+
+```bash Lint
+pnpm lint
+```
+
+```bash Build
+pnpm build
+```
+
+```bash Database Migration
+pnpm db:migrate
+```
+
+```bash Database Studio
+pnpm db:studio
+```
+
+</CodeGroup>
+
+## Branch and Commit Conventions
+
+### Branch Format
+
+Suggested branch naming:
+
+- `fix/123-short-description`
+- `feat/456-short-description`
+- `docs/789-short-description`
+
+### Commit Messages
+
+Commit messages should be clear and scoped:
+
+<CodeGroup>
+
+```bash Bug Fix
+fix(send): handle invalid recipient resolution
+```
+
+```bash Documentation
+docs(readme): clarify issue-first contribution flow
+```
+
+</CodeGroup>
+
+## Pull Request Requirements
+
+Each PR should include:
+
+<CardGroup cols={2}>
+  <Card title="Linked Issue" icon="link">
+    Reference the issue number (e.g., `Closes #123`)
+  </Card>
+  
+  <Card title="Clear Summary" icon="file-lines">
+    Explain what changed and why
+  </Card>
+  
+  <Card title="Validation Notes" icon="check-circle">
+    Document lint/build/manual checks performed
+  </Card>
+  
+  <Card title="Visual Changes" icon="image">
+    Include screenshots or short video for UI changes
+  </Card>
+</CardGroup>
+
+<Note>
+Keep PRs focused. Large mixed-scope PRs are harder to review and may be split before merge.
+</Note>
+
+## Review and Merge Policy
+
+- Maintainers review for behavior, safety, clarity, and scope alignment.
+- Requested changes should be addressed in follow-up commits.
+- PRs are merged when they meet issue scope and quality checks.
+
+## Good First Contributions
+
+If you are new to the project, start with:
+
+<CardGroup cols={2}>
+  <Card title="Good First Issues" icon="flag">
+    Look for `good first issue` labels
+  </Card>
+  
+  <Card title="Documentation" icon="book">
+    Improve or expand documentation
+  </Card>
+  
+  <Card title="UI Polish" icon="paintbrush">
+    Fix UI polish and copy issues
+  </Card>
+  
+  <Card title="Bug Fixes" icon="bug">
+    Small bug fixes with clear reproduction steps
+  </Card>
+</CardGroup>
+
+## Community Guidelines
+
+### Expected Behavior
+
+- Be respectful and constructive in discussions.
+- Assume good intent and ask for clarification before escalating.
+- Give actionable technical feedback.
+- Help newcomers understand context and project conventions.
+
+### Unacceptable Behavior
+
+- Harassment, hate speech, threats, or discrimination.
+- Personal attacks, trolling, or repeated hostile behavior.
+- Sharing private information without consent.
+- Disruptive behavior that blocks healthy collaboration.
+
+### Reporting
+
+If you experience or witness behavior that violates our Code of Conduct, contact the repository owner privately through [GitHub](https://github.com/ignaciogarcia-dev).
+
+<Info>
+Project maintainers are responsible for interpreting and enforcing the Code of Conduct. Reports are reviewed case by case.
+</Info>

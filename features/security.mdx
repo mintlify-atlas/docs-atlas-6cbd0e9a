@@ -1,0 +1,442 @@
+---
+title: Security
+description: Client-side encryption, PIN-based backups, and wallet locking to protect your funds
+---
+
+## Overview
+
+Walty follows a **self-custody** security model. Your seed phrase and private keys never leave your device unencrypted. All cryptographic operations happen client-side in your browser.
+
+<Warning>
+**You are solely responsible for your wallet security.** Walty cannot recover your funds if you lose your seed phrase or forget your password.
+</Warning>
+
+## Client-Side Encryption
+
+Walty uses industry-standard encryption to protect your seed phrase.
+
+### Encryption Scheme
+
+- **Algorithm**: AES-256-GCM (Galois/Counter Mode)
+- **Key Derivation**: PBKDF2-SHA256 with 210,000 iterations
+- **Initialization Vector**: 12 bytes (96 bits) of cryptographically secure random data
+- **Salt**: 16 bytes (128 bits) of cryptographically secure random data
+
+```typescript lib/crypto.ts
+export async function encryptSeed(mnemonic: string, password: string): Promise<EncryptedSeed> {
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const key = await deriveKey(password, salt)
+
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    new TextEncoder().encode(mnemonic)
+  )
+
+  return {
+    ciphertext: toBase64(new Uint8Array(ciphertext)),
+    iv: toBase64(iv),
+    salt: toBase64(salt),
+    version: 1,
+  }
+}
+```
+
+### Key Derivation
+
+Your password is never stored. Instead, it's used to derive an encryption key using PBKDF2:
+
+```typescript lib/crypto.ts
+async function deriveKey(password: string, salt: Uint8Array<ArrayBuffer>) {
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  )
+
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 210000,  // OWASP recommended minimum
+      hash: "SHA-256",
+    },
+    baseKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  )
+}
+```
+
+<Info>
+**210,000 iterations** is the OWASP recommended minimum for PBKDF2-SHA256 as of 2024. This makes brute-force attacks computationally expensive.
+</Info>
+
+### Decryption
+
+When you unlock your wallet:
+
+```typescript lib/crypto.ts
+export async function decryptSeed(encrypted: EncryptedSeed, password: string): Promise<string> {
+  const salt = fromBase64(encrypted.salt)
+  const iv = fromBase64(encrypted.iv)
+  const ciphertext = fromBase64(encrypted.ciphertext)
+
+  const key = await deriveKey(password, salt)
+
+  try {
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      ciphertext
+    )
+    return new TextDecoder().decode(plaintext)
+  } catch {
+    throw new Error("Invalid password")
+  }
+}
+```
+
+AES-GCM provides **authenticated encryption**, meaning tampering with the ciphertext will cause decryption to fail.
+
+## Encrypted Storage Format
+
+Wallet data stored in browser IndexedDB:
+
+```typescript
+type EncryptedSeed = {
+  ciphertext: string  // Base64-encoded AES-GCM ciphertext
+  iv: string          // Base64-encoded initialization vector
+  salt: string        // Base64-encoded PBKDF2 salt
+  version: 1          // Encryption scheme version (for future upgrades)
+}
+```
+
+### Storage Location
+
+- **Web**: Browser IndexedDB (domain-scoped, not accessible to other sites)
+- **Desktop**: Electron's persistent storage (encrypted by OS)
+
+<Warning>
+**Browser data can be cleared** if you:
+- Clear browsing data
+- Uninstall the browser
+- Use incognito mode (data deleted on close)
+
+Always maintain an offline backup of your seed phrase.
+</Warning>
+
+## PIN-Based Backups
+
+Walty offers optional server-assisted PIN backups for easier wallet recovery.
+
+### How PIN Backups Work
+
+<Steps>
+  <Step title="Set a 6-digit PIN">
+    Choose a memorable numeric PIN (e.g., 123456).
+  </Step>
+
+  <Step title="Server generates challenge">
+    The Walty server creates a random challenge (server pepper).
+
+    This pepper is required for decryption, making offline brute-force attacks impractical.
+  </Step>
+
+  <Step title="Encrypt seed with PIN + challenge">
+    ```typescript lib/crypto.ts
+    export async function encryptSeedWithPin(
+      mnemonic: string,
+      pin: string,
+      challenge: string,
+    ): Promise<PinEncryptedSeed> {
+      const salt = crypto.getRandomValues(new Uint8Array(16))
+      const iv = crypto.getRandomValues(new Uint8Array(12))
+      const key = await derivePinKey(pin, challenge, salt)
+
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        new TextEncoder().encode(mnemonic),
+      )
+
+      return {
+        ciphertext: toBase64(new Uint8Array(ciphertext)),
+        iv: toBase64(iv),
+        salt: toBase64(salt),
+        version: 2,
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Store encrypted backup on server">
+    The encrypted seed (not your PIN or seed phrase) is uploaded to the Walty server.
+  </Step>
+
+  <Step title="Recover with PIN">
+    On a new device:
+    1. Enter your 6-digit PIN
+    2. Walty fetches the server challenge and encrypted seed
+    3. Derives the decryption key from `PIN + challenge`
+    4. Decrypts your seed phrase
+  </Step>
+</Steps>
+
+### PIN Key Derivation
+
+```typescript lib/crypto.ts
+async function derivePinKey(pin: string, challenge: string, salt: Uint8Array<ArrayBuffer>) {
+  // Mix PIN with server challenge so offline brute force requires the server pepper
+  const material = pin + challenge
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(material),
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  )
+
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 210000,
+      hash: "SHA-256",
+    },
+    baseKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  )
+}
+```
+
+<Info>
+Combining your PIN with the server challenge means:
+- An attacker with only your encrypted backup cannot brute-force your PIN
+- An attacker with only the server database cannot decrypt backups
+- Both the backup file AND server access are required
+</Info>
+
+### PIN Backup Security Model
+
+PIN backups are **less secure** than password encryption because:
+- 6-digit PINs have only 1,000,000 possible combinations
+- Server compromise + encrypted backup = brute-forceable
+
+<Warning>
+**Only use PIN backups for convenience**, not as your primary backup. Always maintain an offline copy of your 24-word seed phrase.
+</Warning>
+
+## Wallet Lock
+
+Walty automatically locks your wallet after a period of inactivity.
+
+### Lock Behavior
+
+- **Auto-lock timer**: 5 minutes (configurable in settings)
+- **What gets locked**: Your decrypted seed phrase is removed from memory
+- **What persists**: Encrypted wallet data remains in storage
+- **How to unlock**: Re-enter your password
+
+<Steps>
+  <Step title="Wallet unlocked">
+    You enter your password and your seed phrase is decrypted into memory.
+  </Step>
+
+  <Step title="Activity tracking">
+    Walty monitors user activity (clicks, keypresses, etc.).
+  </Step>
+
+  <Step title="Inactivity detected">
+    After 5 minutes of no activity, the wallet locks automatically.
+  </Step>
+
+  <Step title="Seed phrase cleared from memory">
+    The decrypted seed phrase is wiped from RAM.
+  </Step>
+
+  <Step title="Password required to unlock">
+    You must re-enter your password to access the wallet again.
+  </Step>
+</Steps>
+
+<Tip>
+Enable auto-lock if you use Walty on a shared computer or leave your device unattended.
+</Tip>
+
+## Browser Security
+
+### Web Crypto API
+
+Walty uses the browser's built-in [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) for all cryptographic operations:
+
+- ✅ FIPS 140-2 compliant implementations (in modern browsers)
+- ✅ Hardware-accelerated where available (CPU AES-NI instructions)
+- ✅ Constant-time operations to prevent timing attacks
+- ✅ Secure random number generation via OS entropy
+
+### HTTPS Requirement
+
+Walty **requires HTTPS** for production use. The Web Crypto API is only available on secure origins.
+
+<Warning>
+**Never use Walty over HTTP** in production. Your seed phrase and password could be intercepted by network attackers.
+</Warning>
+
+### Content Security Policy (CSP)
+
+Walty implements strict CSP headers to prevent XSS attacks:
+
+```
+Content-Security-Policy: 
+  default-src 'self'; 
+  script-src 'self' 'unsafe-eval'; 
+  style-src 'self' 'unsafe-inline'; 
+  img-src 'self' data: https:; 
+  connect-src 'self' https://api.coingecko.com https://api.0x.org
+```
+
+This limits the damage from potential vulnerabilities.
+
+## Backup Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Seed Phrase Backup" icon="file-lines">
+    Write down your 24-word seed phrase on paper. Store in a fireproof safe or safety deposit box.
+  </Card>
+  <Card title="Encrypted Export" icon="file-zipper">
+    Export your encrypted wallet file and store on a USB drive or cloud storage (encrypted).
+  </Card>
+  <Card title="PIN Backup" icon="hashtag">
+    Enable PIN backup for quick recovery, but don't rely on it as your only backup.
+  </Card>
+  <Card title="Multiple Copies" icon="copy">
+    Maintain at least 2-3 copies of your seed phrase in different physical locations.
+  </Card>
+</CardGroup>
+
+### Backup Verification
+
+After creating a backup:
+
+1. **Test recovery immediately** on a different device or browser
+2. Verify the recovered address matches your original address
+3. Send a small test transaction to confirm full functionality
+
+<Warning>
+**Many users lose funds** because they never tested their backup. Don't skip this step.
+</Warning>
+
+## Threat Model
+
+### What Walty Protects Against
+
+✅ **Malicious websites**: Your seed phrase is never exposed to other sites  
+✅ **Network eavesdropping**: Seed phrase never transmitted unencrypted  
+✅ **Browser history**: Seed phrase never stored in plaintext  
+✅ **Weak passwords**: PBKDF2 with 210K iterations slows brute-force  
+✅ **Malware with snapshot access**: Encrypted storage prevents offline attacks  
+
+### What Walty Does NOT Protect Against
+
+❌ **Phishing attacks**: If you enter your seed phrase on a fake site, it's compromised  
+❌ **Keyloggers**: Malware recording your password as you type  
+❌ **Malicious browser extensions**: Extensions can access page content and form inputs  
+❌ **Physical device access while unlocked**: An attacker with access to your unlocked device can transfer funds  
+❌ **Compromised dependencies**: Supply chain attacks on npm packages or CDN resources  
+
+<Tip>
+Use a dedicated device or browser profile for Walty with no other extensions installed.
+</Tip>
+
+## Security Checklist
+
+<Steps>
+  <Step title="Use a strong password">
+    12+ characters, mixed case, numbers, symbols
+  </Step>
+  <Step title="Back up your seed phrase">
+    Write down all 24 words in order and store securely offline
+  </Step>
+  <Step title="Enable auto-lock">
+    Set to 5 minutes or less
+  </Step>
+  <Step title="Verify addresses">
+    Always double-check recipient addresses before sending
+  </Step>
+  <Step title="Use HTTPS only">
+    Never access Walty over HTTP
+  </Step>
+  <Step title="Keep software updated">
+    Update your browser and Walty regularly
+  </Step>
+  <Step title="Beware of phishing">
+    Bookmark the official Walty URL and only use that link
+  </Step>
+  <Step title="Start with small amounts">
+    Test the wallet with small transactions before moving large amounts
+  </Step>
+</Steps>
+
+## Incident Response
+
+If you suspect your wallet is compromised:
+
+<Steps>
+  <Step title="Stop using the wallet immediately">
+    Do not make any new transactions.
+  </Step>
+  <Step title="Create a new wallet">
+    Generate a fresh seed phrase on a clean device.
+  </Step>
+  <Step title="Transfer funds to new wallet">
+    Move all assets to the new wallet as quickly as possible.
+  </Step>
+  <Step title="Revoke token approvals">
+    Use a tool like Revoke.cash to cancel any ERC-20 approvals on the compromised wallet.
+  </Step>
+  <Step title="Analyze the breach">
+    Review transaction history to understand how the compromise occurred.
+  </Step>
+</Steps>
+
+<Warning>
+**Never reuse a compromised seed phrase.** Even if you recover your funds, the seed is permanently unsafe.
+</Warning>
+
+## Open Source Security
+
+Walty is [open source](https://github.com/ignaciogarcia-dev/walty), allowing security researchers to audit the code.
+
+### Benefits
+
+- **Transparency**: Anyone can verify the encryption implementation
+- **Community review**: Security vulnerabilities are discovered and fixed faster
+- **No backdoors**: The code you review is the code that runs (when self-hosted)
+- **Fork-ability**: You can modify and deploy your own version
+
+### Responsible Disclosure
+
+If you discover a security vulnerability:
+
+1. **Do not** disclose publicly until patched
+2. Email security@walty.app with details
+3. Allow 90 days for a fix before public disclosure
+4. We'll credit you in the release notes (if desired)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Wallet Creation" icon="plus" href="/features/wallet-creation">
+    Learn how to create and import wallets securely
+  </Card>
+  <Card title="Send & Receive" icon="arrow-right-arrow-left" href="/features/send-receive">
+    Start using your secure wallet for transactions
+  </Card>
+</CardGroup>

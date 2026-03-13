@@ -1,0 +1,208 @@
+---
+title: "Login"
+api: "POST /api/auth/login"
+description: "Authenticate a user and receive an authentication token"
+---
+
+## Endpoint
+
+```
+POST /api/auth/login
+```
+
+Authenticates an existing user with email and password credentials. Upon successful authentication, a JWT token is generated and set as an HTTP-only cookie.
+
+## Request Body
+
+<ParamField body="email" type="string" required>
+  User's registered email address.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User's password. Will be compared against the stored bcrypt hash.
+</ParamField>
+
+### Request Schema
+
+```json
+{
+  "email": "string",
+  "password": "string"
+}
+```
+
+## Response
+
+<ResponseField name="ok" type="boolean">
+  Returns `true` on successful authentication
+</ResponseField>
+
+### Success Response (200)
+
+```json
+{
+  "ok": true
+}
+```
+
+The response also sets a `Set-Cookie` header with the authentication token:
+
+```
+Set-Cookie: token={JWT}; HttpOnly; Secure; SameSite=Strict; Path=/
+```
+
+### JWT Payload
+
+The JWT token contains:
+
+- `userId` (number): The authenticated user's ID
+- `userType` (string): Either `"person"` or `"business"` (defaults to `"person"` if not set)
+- Standard JWT claims (`exp`, `iat`)
+
+## Error Responses
+
+<Expandable title="401 Unauthorized">
+  <ResponseField name="error" type="string">
+    `invalid credentials`
+  </ResponseField>
+  
+  Returned when:
+  - No user exists with the provided email
+  - The password doesn't match the stored hash
+  
+  ```json
+  {
+    "error": "invalid credentials"
+  }
+  ```
+  
+  <Note>
+    For security reasons, the same error message is returned whether the email doesn't exist or the password is wrong. This prevents user enumeration attacks.
+  </Note>
+</Expandable>
+
+<Expandable title="429 Too Many Requests">
+  <ResponseField name="error" type="string">
+    `Too many requests`
+  </ResponseField>
+  
+  Returned when the rate limit is exceeded. Rate limiting is based on the client's IP address.
+  
+  ```json
+  {
+    "error": "Too many requests"
+  }
+  ```
+</Expandable>
+
+## Code Examples
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.walty.app/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "securepassword123"
+  }' \
+  -c cookies.txt
+```
+
+```javascript JavaScript (Fetch)
+const response = await fetch('/api/auth/login', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  credentials: 'include', // Important: includes cookies
+  body: JSON.stringify({
+    email: 'user@example.com',
+    password: 'securepassword123',
+  }),
+});
+
+const data = await response.json();
+
+if (response.ok) {
+  console.log('Login successful');
+  // JWT token is now stored in HTTP-only cookie
+} else {
+  console.error('Error:', data.error);
+}
+```
+
+```typescript TypeScript (Fetch)
+interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+interface LoginResponse {
+  ok?: boolean;
+  error?: string;
+}
+
+const login = async (email: string, password: string): Promise<LoginResponse> => {
+  const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ email, password }),
+  });
+
+  return response.json();
+};
+```
+
+```python Python (requests)
+import requests
+
+url = "https://api.walty.app/api/auth/login"
+payload = {
+    "email": "user@example.com",
+    "password": "securepassword123"
+}
+
+session = requests.Session()
+response = session.post(url, json=payload)
+
+if response.status_code == 200:
+    print("Login successful")
+    # Cookie is automatically stored in session
+else:
+    print(f"Error: {response.json()['error']}")
+```
+
+</CodeGroup>
+
+## Implementation Details
+
+The login process follows these steps:
+
+1. **Rate Limit Check**: Validates request against rate limiter
+2. **User Lookup**: Queries database for user with matching email
+3. **Password Verification**: Compares provided password with bcrypt hash
+4. **Token Generation**: Creates JWT with user ID and type
+5. **Cookie Setting**: Returns token in secure HTTP-only cookie
+
+<Note>
+  - JWT tokens expire after 7 days from login
+  - The token is signed using the `JWT_SECRET` environment variable
+  - Only `id`, `passwordHash`, and `userType` fields are queried from the database
+  - Password comparison uses bcrypt's constant-time comparison
+</Note>
+
+<Warning>
+  This endpoint is rate-limited to prevent brute force attacks. Implement proper error handling for 429 responses with exponential backoff.
+</Warning>
+
+## Security Considerations
+
+- **Constant-time comparison**: bcrypt.compare() prevents timing attacks
+- **Generic error messages**: Prevents user enumeration
+- **Rate limiting**: Protects against brute force attacks
+- **Secure cookies**: HttpOnly, Secure, and SameSite flags prevent XSS and CSRF
+- **Password hashing**: Bcrypt with salt ensures passwords are never stored in plain text
