@@ -1,0 +1,148 @@
+{
+  "projectType": "saas",
+  "projectName": "Walty",
+  "projectDescription": "Open-source self-custodial multichain EVM wallet with privacy-first design and client-side signing.",
+  "theme": "almond",
+  "primaryColor": "#6366F1",
+  "lightColor": "#818CF8",
+  "darkColor": "#4F46E5",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "self-hosting"
+            ]
+          },
+          {
+            "group": "Wallet Features",
+            "pages": [
+              "features/wallet-creation",
+              "features/send-receive",
+              "features/token-swaps",
+              "features/portfolio-tracking",
+              "features/security"
+            ]
+          },
+          {
+            "group": "Business Features",
+            "pages": [
+              "business/payment-requests",
+              "business/pos-system"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/multi-chain",
+              "guides/backup-recovery",
+              "guides/environment-variables",
+              "guides/docker-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Authentication",
+            "pages": [
+              "api/auth/overview",
+              "api/auth/register",
+              "api/auth/login",
+              "api/auth/logout"
+            ]
+          },
+          {
+            "group": "Wallet",
+            "pages": [
+              "api/wallet/portfolio",
+              "api/wallet/addresses",
+              "api/wallet/contacts",
+              "api/wallet/profile"
+            ]
+          },
+          {
+            "group": "Transactions",
+            "pages": [
+              "api/transactions/send",
+              "api/transactions/swap-quote",
+              "api/transactions/swap-price",
+              "api/transactions/history",
+              "api/transactions/activity"
+            ]
+          },
+          {
+            "group": "Payments",
+            "pages": [
+              "api/payments/create-request",
+              "api/payments/get-request",
+              "api/payments/contributions",
+              "api/payments/history"
+            ]
+          },
+          {
+            "group": "Pricing & Tokens",
+            "pages": [
+              "api/pricing/token-prices",
+              "api/pricing/token-images"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Developer",
+        "groups": [
+          {
+            "group": "Contributing",
+            "pages": [
+              "developer/contributing",
+              "developer/development",
+              "developer/architecture",
+              "developer/roadmap"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Self-custodial wallet with 24-word seed phrases",
+    "Multi-chain EVM support (Ethereum, Arbitrum, Base, Optimism, Polygon)",
+    "Client-side encryption and transaction signing",
+    "Send native tokens and ERC-20s with gas estimation",
+    "Token swaps with quote aggregation (0x, 1inch)",
+    "Portfolio tracking with real-time USD valuations",
+    "Payment request system for business accounts",
+    "ENS name resolution",
+    "Self-hostable with Docker",
+    "Multi-language support (English, Spanish)"
+  ],
+  "publicApiSurface": [
+    "POST /api/auth/register - Create new user account",
+    "POST /api/auth/login - Authenticate user",
+    "POST /api/auth/logout - End session",
+    "GET /api/portfolio - Fetch multi-chain portfolio balances and USD values",
+    "GET /api/addresses - List user wallet addresses",
+    "POST /api/addresses - Add new wallet address",
+    "GET /api/contacts - Fetch address book contacts",
+    "POST /api/contacts - Create new contact",
+    "POST /api/tx - Broadcast signed transaction",
+    "GET /api/tx/activity - Get transaction history",
+    "POST /api/swap/quote - Get swap quote for token pair",
+    "GET /api/swap/price - Get current swap price",
+    "POST /api/payment-requests - Create payment request (business only)",
+    "GET /api/payment-requests/{id} - Get payment request status",
+    "GET /api/payment-requests/history - List payment requests",
+    "GET /api/prices - Get token prices",
+    "GET /api/token-images - Get token image URLs",
+    "GET /api/profile - Get user profile",
+    "PATCH /api/profile - Update user profile"
+  ]
+}
